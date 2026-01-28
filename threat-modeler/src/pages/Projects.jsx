@@ -16,20 +16,26 @@ import {
   Users,
   ChevronRight,
   X,
+  Brain,
+  Sparkles,
 } from 'lucide-react';
 import { useThreatContext, RISK_LEVELS } from '../context/ThreatContext';
+import AIAnalysisModal from '../components/AIAnalysisModal';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function Projects() {
   const navigate = useNavigate();
   const {
     state,
     addProject,
+    addProjectWithId,
     updateProject,
     deleteProject,
     setCurrentProject,
     getRiskStats,
     getControlStats,
     getMitigationProgress,
+    importAIResults,
   } = useThreatContext();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,6 +49,11 @@ export default function Projects() {
     status: 'active',
     tags: '',
   });
+
+  // AI Analysis state
+  const [showAIAnalysis, setShowAIAnalysis] = useState(false);
+  const [projectForAnalysis, setProjectForAnalysis] = useState(null);
+  const [runAIAnalysis, setRunAIAnalysis] = useState(true);
 
   const filteredProjects = state.projects.filter(
     (p) =>
@@ -59,13 +70,43 @@ export default function Projects() {
 
     if (editingProject) {
       updateProject({ ...projectData, id: editingProject.id });
+      setShowModal(false);
+      setEditingProject(null);
     } else {
-      addProject(projectData);
+      // Create new project with a known ID for AI analysis
+      const newProjectId = uuidv4();
+      const newProject = {
+        ...projectData,
+        id: newProjectId,
+      };
+      addProjectWithId(newProject);
+      setShowModal(false);
+
+      // Trigger AI analysis for new projects
+      if (runAIAnalysis) {
+        setProjectForAnalysis(newProject);
+        setShowAIAnalysis(true);
+      }
     }
 
-    setShowModal(false);
     setEditingProject(null);
     setFormData({ name: '', description: '', owner: '', status: 'active', tags: '' });
+  };
+
+  const handleAIAnalysisComplete = (results) => {
+    if (results && projectForAnalysis) {
+      importAIResults(results);
+      // Navigate to the project detail page after analysis
+      setCurrentProject(projectForAnalysis);
+      navigate(`/projects/${projectForAnalysis.id}`);
+    }
+    setProjectForAnalysis(null);
+  };
+
+  const handleRunAIAnalysis = (project) => {
+    setProjectForAnalysis(project);
+    setShowAIAnalysis(true);
+    setActiveDropdown(null);
   };
 
   const handleEdit = (project) => {
@@ -182,6 +223,13 @@ export default function Projects() {
                       >
                         <Eye className="w-4 h-4" />
                         View Details
+                      </button>
+                      <button
+                        onClick={() => handleRunAIAnalysis(project)}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-purple-600 hover:bg-purple-50"
+                      >
+                        <Brain className="w-4 h-4" />
+                        Run AI Analysis
                       </button>
                       <button
                         onClick={() => handleEdit(project)}
@@ -408,6 +456,37 @@ export default function Projects() {
                   />
                 </div>
 
+                {/* AI Analysis Toggle - only show for new projects */}
+                {!editingProject && (
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-100">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                          <Brain className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 flex items-center gap-2">
+                            AI Threat Analysis
+                            <Sparkles className="w-4 h-4 text-purple-500" />
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Automatically identify threats and recommend controls
+                          </p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={runAIAnalysis}
+                          onChange={(e) => setRunAIAnalysis(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-3 pt-4">
                   <button
                     type="button"
@@ -433,6 +512,17 @@ export default function Projects() {
           onClick={() => setActiveDropdown(null)}
         />
       )}
+
+      {/* AI Analysis Modal */}
+      <AIAnalysisModal
+        project={projectForAnalysis}
+        isOpen={showAIAnalysis}
+        onClose={() => {
+          setShowAIAnalysis(false);
+          setProjectForAnalysis(null);
+        }}
+        onComplete={handleAIAnalysisComplete}
+      />
     </div>
   );
 }

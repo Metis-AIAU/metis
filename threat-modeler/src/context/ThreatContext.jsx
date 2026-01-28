@@ -48,6 +48,7 @@ const ACTIONS = {
   LOAD_DATA: 'LOAD_DATA',
   SET_CURRENT_PROJECT: 'SET_CURRENT_PROJECT',
   ADD_PROJECT: 'ADD_PROJECT',
+  ADD_PROJECT_WITH_ID: 'ADD_PROJECT_WITH_ID',
   UPDATE_PROJECT: 'UPDATE_PROJECT',
   DELETE_PROJECT: 'DELETE_PROJECT',
   ADD_THREAT: 'ADD_THREAT',
@@ -64,6 +65,7 @@ const ACTIONS = {
   DELETE_DATA_FLOW: 'DELETE_DATA_FLOW',
   LINK_CONTROL_TO_THREAT: 'LINK_CONTROL_TO_THREAT',
   UNLINK_CONTROL_FROM_THREAT: 'UNLINK_CONTROL_FROM_THREAT',
+  IMPORT_AI_RESULTS: 'IMPORT_AI_RESULTS',
 };
 
 // Reducer
@@ -86,6 +88,12 @@ function threatReducer(state, action) {
       return {
         ...state,
         projects: [...state.projects, { ...action.payload, id: uuidv4(), createdAt: new Date().toISOString() }],
+      };
+
+    case ACTIONS.ADD_PROJECT_WITH_ID:
+      return {
+        ...state,
+        projects: [...state.projects, { ...action.payload, createdAt: new Date().toISOString() }],
       };
 
     case ACTIONS.UPDATE_PROJECT:
@@ -215,6 +223,15 @@ function threatReducer(state, action) {
         ),
       };
 
+    case ACTIONS.IMPORT_AI_RESULTS:
+      return {
+        ...state,
+        threats: [...state.threats, ...action.payload.threats],
+        controls: [...state.controls, ...action.payload.controls],
+        assets: [...state.assets, ...action.payload.assets],
+        dataFlows: [...state.dataFlows, ...action.payload.dataFlows],
+      };
+
     default:
       return state;
   }
@@ -257,6 +274,7 @@ export function ThreatProvider({ children }) {
     setCurrentProject: (project) => dispatch({ type: ACTIONS.SET_CURRENT_PROJECT, payload: project }),
 
     addProject: (project) => dispatch({ type: ACTIONS.ADD_PROJECT, payload: project }),
+    addProjectWithId: (project) => dispatch({ type: ACTIONS.ADD_PROJECT_WITH_ID, payload: project }),
     updateProject: (project) => dispatch({ type: ACTIONS.UPDATE_PROJECT, payload: project }),
     deleteProject: (id) => dispatch({ type: ACTIONS.DELETE_PROJECT, payload: id }),
 
@@ -280,6 +298,17 @@ export function ThreatProvider({ children }) {
       dispatch({ type: ACTIONS.LINK_CONTROL_TO_THREAT, payload: { controlId, threatId } }),
     unlinkControlFromThreat: (controlId, threatId) =>
       dispatch({ type: ACTIONS.UNLINK_CONTROL_FROM_THREAT, payload: { controlId, threatId } }),
+
+    importAIResults: (results) =>
+      dispatch({
+        type: ACTIONS.IMPORT_AI_RESULTS,
+        payload: {
+          threats: results.threats || [],
+          controls: results.controls || [],
+          assets: results.assets || [],
+          dataFlows: results.dataFlows || [],
+        },
+      }),
 
     resetToSampleData: () => {
       localStorage.removeItem('threatModelingData');

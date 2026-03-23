@@ -13,8 +13,19 @@ import {
   X,
   ChevronRight,
   ShieldAlert,
+  ClipboardCheck,
+  FileText,
+  Zap,
+  AlertCircle,
+  PrinterCheck,
+  ChevronDown,
+  LayoutGrid,
+  UserCircle,
+  LogOut,
+  WifiOff,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
+import { useAuth } from '../context/AuthContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -26,10 +37,21 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
+const complianceNavigation = [
+  { name: 'Compliance Overview', href: '/compliance', icon: ClipboardCheck },
+  { name: 'AESCSF', href: '/compliance/aescsf', icon: Shield },
+  { name: 'SOCI Act', href: '/compliance/soci', icon: FileText },
+  { name: 'ASD Fortify', href: '/compliance/asd-fortify', icon: Zap },
+  { name: 'Essential Eight', href: '/compliance/essential-eight', icon: LayoutGrid },
+  { name: 'Gap Analysis', href: '/compliance/gap-analysis', icon: AlertCircle },
+  { name: 'Report', href: '/compliance/report', icon: PrinterCheck },
+];
+
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
   const { state } = useThreatContext();
+  const { user, logout, isOffline } = useAuth();
 
   const isActive = (href) => {
     if (href === '/') return location.pathname === '/';
@@ -108,6 +130,61 @@ export default function Layout({ children }) {
                 </Link>
               );
             })}
+
+            {/* Compliance section divider */}
+            {sidebarOpen && (
+              <div className="pt-3 pb-1">
+                <div className="flex items-center gap-2 px-4">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Compliance</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+              </div>
+            )}
+            {!sidebarOpen && <div className="my-2 mx-2 h-px bg-gray-200" />}
+
+            {complianceNavigation.map((item) => {
+              const active = isActive(item.href);
+              const isOverview = item.href === '/compliance';
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group relative ${
+                    active
+                      ? isOverview ? 'bg-emerald-50 text-emerald-700' : 'bg-teal-50 text-teal-700'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <item.icon
+                    className={`w-4 h-4 flex-shrink-0 ${
+                      active
+                        ? isOverview ? 'text-emerald-600' : 'text-teal-600'
+                        : 'text-gray-400 group-hover:text-gray-600'
+                    }`}
+                  />
+                  {sidebarOpen && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="font-medium text-sm"
+                    >
+                      {item.name}
+                    </motion.span>
+                  )}
+                  {active && (
+                    <motion.div
+                      className={`absolute right-2 w-1.5 h-1.5 rounded-full ${isOverview ? 'bg-emerald-600' : 'bg-teal-600'}`}
+                    />
+                  )}
+                  {!sidebarOpen && (
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                      {item.name}
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
           </nav>
 
           {/* Current Project Indicator */}
@@ -130,8 +207,48 @@ export default function Layout({ children }) {
             </motion.div>
           )}
 
-          {/* Toggle Button */}
+          {/* User info + logout */}
           <div className="p-4 border-t border-gray-100">
+            {sidebarOpen ? (
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <UserCircle className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{user?.username}</p>
+                  {isOffline && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <WifiOff className="w-3 h-3 text-amber-500" />
+                      <span className="text-xs text-amber-600">Offline</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={logout}
+                  title="Sign out"
+                  className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 mb-3 relative group">
+                <button
+                  onClick={logout}
+                  className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 hover:bg-red-100 hover:text-red-500 transition-colors"
+                >
+                  <UserCircle className="w-5 h-5" />
+                </button>
+                <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                  {user?.username} · Sign out
+                </div>
+                {isOffline && (
+                  <WifiOff className="w-3 h-3 text-amber-500" />
+                )}
+              </div>
+            )}
+
+            {/* Collapse toggle */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors"

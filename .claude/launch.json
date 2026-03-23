@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--experimental-sqlite", "threat-modeler/server/index.js"],
+      "port": 3001,
+      "autoPort": true
+    },
+    {
+      "name": "threat-modeler",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "threat-modeler", "run", "dev", "--", "--host", "0.0.0.0"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const DB_PATH = process.env.DB_PATH || './data/compliance.db';
 const resolvedPath = path.resolve(__dirname, DB_PATH);

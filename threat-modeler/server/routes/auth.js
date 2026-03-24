@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { isValidUsername, isValidPassword } = require('../utils/validate');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 const router = express.Router();
 
@@ -41,22 +41,24 @@ router.post('/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 12);
 
     // Atomic: insert user + empty state row together
+    let newUserId;
     db.exec('BEGIN');
     try {
-      const { lastInsertRowid: userId } = db
+      const { lastInsertRowid } = db
         .prepare('INSERT INTO users (username, password) VALUES (?, ?)')
         .run(username, hash);
 
-      db.prepare("INSERT INTO compliance_states (user_id, state_json) VALUES (?, '{}')").run(userId);
+      db.prepare("INSERT INTO compliance_states (user_id, state_json) VALUES (?, '{}')").run(lastInsertRowid);
       db.exec('COMMIT');
-
-      const user = { id: Number(userId), username };
-      const token = signToken(user);
-      return res.status(201).json({ token, user });
+      newUserId = Number(lastInsertRowid);
     } catch (innerErr) {
       db.exec('ROLLBACK');
       throw innerErr;
     }
+
+    const user = { id: newUserId, username };
+    const token = signToken(user);
+    return res.status(201).json({ token, user });
   } catch (err) {
     console.error('[auth/register]', err);
     return res.status(500).json({ error: 'Registration failed. Please try again.' });

@@ -1,17 +1,95 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { MousePointer2, Link2, Trash2, RotateCcw, ImagePlus, X, Info } from 'lucide-react';
+import { MousePointer2, Link2, Trash2, RotateCcw, ImagePlus, X, Info, ChevronDown, ChevronRight } from 'lucide-react';
 
-// ─── Element type definitions ─────────────────────────────────────────────────
-const ELEMENT_DEFS = {
-  actor:          { label: 'Actor',           color: '#3b82f6', bg: '#dbeafe', w: 80,  h: 90,  desc: 'External user or actor' },
-  process:        { label: 'Process',         color: '#8b5cf6', bg: '#ede9fe', w: 140, h: 70,  desc: 'Internal process or service' },
-  data_store:     { label: 'Data Store',      color: '#f59e0b', bg: '#fef3c7', w: 160, h: 60,  desc: 'Database or file store' },
-  external:       { label: 'External System', color: '#6b7280', bg: '#f3f4f6', w: 140, h: 60,  desc: 'External service or entity' },
-  trust_boundary: { label: 'Trust Boundary',  color: '#ef4444', bg: 'rgba(254,242,242,0.4)', w: 300, h: 220, desc: 'Security trust zone' },
+// ─── Protocol definitions ────────────────────────────────────────────────────
+export const PROTOCOLS = {
+  HTTPS:   { label: 'HTTPS',   color: '#10b981' },
+  HTTP:    { label: 'HTTP',    color: '#f59e0b' },
+  TCP:     { label: 'TCP',     color: '#3b82f6' },
+  SSH:     { label: 'SSH',     color: '#8b5cf6' },
+  UDP:     { label: 'UDP',     color: '#06b6d4' },
+  MQTT:    { label: 'MQTT',    color: '#ec4899' },
+  Modbus:  { label: 'Modbus',  color: '#ef4444' },
+  DNP3:    { label: 'DNP3',    color: '#f97316' },
+  ICMP:    { label: 'ICMP',    color: '#84cc16' },
+  Custom:  { label: 'Custom',  color: '#94a3b8' },
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Element type definitions ────────────────────────────────────────────────
+export const ELEMENT_DEFS = {
+  // People & Actors
+  user:           { label: 'User',          color: '#3b82f6', bg: '#dbeafe', w: 80,  h: 90,  desc: 'End user or client',             category: 'people'   },
+  admin:          { label: 'Admin',         color: '#1d4ed8', bg: '#bfdbfe', w: 80,  h: 90,  desc: 'System administrator',            category: 'people'   },
+  attacker:       { label: 'Attacker',      color: '#dc2626', bg: '#fee2e2', w: 80,  h: 90,  desc: 'Threat actor / adversary',        category: 'people'   },
+  external_actor: { label: 'External',      color: '#6b7280', bg: '#f3f4f6', w: 100, h: 60,  desc: 'External party or organisation',  category: 'people'   },
+  // Servers
+  web_server:     { label: 'Web Server',    color: '#0891b2', bg: '#cffafe', w: 120, h: 70,  desc: 'HTTP/HTTPS web server',           category: 'servers'  },
+  app_server:     { label: 'App Server',    color: '#7c3aed', bg: '#ede9fe', w: 120, h: 70,  desc: 'Application / middleware server', category: 'servers'  },
+  db_server:      { label: 'DB Server',     color: '#d97706', bg: '#fef3c7', w: 110, h: 75,  desc: 'Database server',                 category: 'servers'  },
+  file_server:    { label: 'File Server',   color: '#059669', bg: '#d1fae5', w: 120, h: 70,  desc: 'File storage server',             category: 'servers'  },
+  mail_server:    { label: 'Mail Server',   color: '#db2777', bg: '#fce7f3', w: 120, h: 70,  desc: 'Email server (SMTP/IMAP)',         category: 'servers'  },
+  // Network Devices
+  firewall:       { label: 'Firewall',      color: '#dc2626', bg: '#fee2e2', w: 110, h: 65,  desc: 'Network firewall',                category: 'network'  },
+  router:         { label: 'Router',        color: '#2563eb', bg: '#dbeafe', w: 80,  h: 80,  desc: 'Network router',                  category: 'network'  },
+  switch:         { label: 'Switch',        color: '#0d9488', bg: '#ccfbf1', w: 120, h: 60,  desc: 'Network switch',                  category: 'network'  },
+  load_balancer:  { label: 'Load Balancer', color: '#7c3aed', bg: '#ede9fe', w: 130, h: 60,  desc: 'Traffic load balancer',           category: 'network'  },
+  vpn_gateway:    { label: 'VPN Gateway',   color: '#065f46', bg: '#d1fae5', w: 130, h: 65,  desc: 'VPN gateway / tunnel endpoint',   category: 'network'  },
+  ids_ips:        { label: 'IDS/IPS',       color: '#7f1d1d', bg: '#fecaca', w: 110, h: 60,  desc: 'Intrusion detection/prevention',  category: 'network'  },
+  // Data Stores
+  database:       { label: 'Database',      color: '#b45309', bg: '#fef3c7', w: 100, h: 70,  desc: 'Relational / NoSQL database',     category: 'storage'  },
+  cache:          { label: 'Cache',         color: '#0891b2', bg: '#cffafe', w: 100, h: 60,  desc: 'In-memory cache (Redis etc.)',    category: 'storage'  },
+  file_store:     { label: 'File Store',    color: '#6d28d9', bg: '#ede9fe', w: 100, h: 65,  desc: 'File / object storage',           category: 'storage'  },
+  cloud_storage:  { label: 'Cloud Storage', color: '#0369a1', bg: '#e0f2fe', w: 130, h: 65,  desc: 'Cloud storage (S3, Blob…)',       category: 'storage'  },
+  // Services & Apps
+  api_service:    { label: 'API Service',   color: '#7c3aed', bg: '#ede9fe', w: 120, h: 60,  desc: 'REST / GraphQL API endpoint',     category: 'services' },
+  microservice:   { label: 'Microservice',  color: '#1d4ed8', bg: '#dbeafe', w: 110, h: 65,  desc: 'Microservice / container',        category: 'services' },
+  cloud_service:  { label: 'Cloud Service', color: '#0284c7', bg: '#e0f2fe', w: 130, h: 65,  desc: 'Cloud-hosted service (SaaS)',     category: 'services' },
+  mobile_app:     { label: 'Mobile App',    color: '#059669', bg: '#d1fae5', w: 65,  h: 100, desc: 'Mobile application',              category: 'services' },
+  web_app:        { label: 'Web App',       color: '#2563eb', bg: '#dbeafe', w: 130, h: 65,  desc: 'Web application / browser client',category: 'services' },
+  // Zones (rendered as large containers)
+  internet_zone:  { label: 'Internet',      color: '#dc2626', bg: 'rgba(254,242,242,0.45)', w: 320, h: 240, desc: 'Public internet zone',       category: 'zones' },
+  dmz_zone:       { label: 'DMZ',           color: '#ea580c', bg: 'rgba(255,237,213,0.45)', w: 320, h: 240, desc: 'Demilitarised zone',          category: 'zones' },
+  corporate_lan:  { label: 'Corporate LAN', color: '#16a34a', bg: 'rgba(220,252,231,0.45)', w: 320, h: 240, desc: 'Internal corporate network',  category: 'zones' },
+  ot_ics_zone:    { label: 'OT / ICS Zone', color: '#d97706', bg: 'rgba(254,243,199,0.45)', w: 320, h: 240, desc: 'Operational technology net',  category: 'zones' },
+  cloud_zone:     { label: 'Cloud Zone',    color: '#0284c7', bg: 'rgba(224,242,254,0.45)', w: 320, h: 240, desc: 'Cloud infrastructure zone',   category: 'zones' },
+  secure_zone:    { label: 'Secure Zone',   color: '#0f766e', bg: 'rgba(204,251,241,0.45)', w: 320, h: 240, desc: 'High-security enclave',       category: 'zones' },
+};
+
+export const CATEGORIES = [
+  { id: 'people',   label: 'People',       types: ['user','admin','attacker','external_actor'] },
+  { id: 'servers',  label: 'Servers',      types: ['web_server','app_server','db_server','file_server','mail_server'] },
+  { id: 'network',  label: 'Network',      types: ['firewall','router','switch','load_balancer','vpn_gateway','ids_ips'] },
+  { id: 'storage',  label: 'Data Stores',  types: ['database','cache','file_store','cloud_storage'] },
+  { id: 'services', label: 'Services',     types: ['api_service','microservice','cloud_service','mobile_app','web_app'] },
+  { id: 'zones',    label: 'Zones',        types: ['internet_zone','dmz_zone','corporate_lan','ot_ics_zone','cloud_zone','secure_zone'] },
+];
+
+const ZONE_TYPES = new Set(['internet_zone','dmz_zone','corporate_lan','ot_ics_zone','cloud_zone','secure_zone']);
+
+// ─── Arrow marker colours ─────────────────────────────────────────────────────
+const MARKER_DEFS = [
+  { id: 'def',   color: '#94a3b8' },
+  { id: 'sel',   color: '#2563eb' },
+  { id: 'conn',  color: '#8b5cf6' },
+  { id: 'https', color: '#10b981' },
+  { id: 'http',  color: '#f59e0b' },
+  { id: 'tcp',   color: '#3b82f6' },
+  { id: 'ssh',   color: '#8b5cf6' },
+  { id: 'udp',   color: '#06b6d4' },
+  { id: 'mqtt',  color: '#ec4899' },
+  { id: 'modbus',color: '#ef4444' },
+  { id: 'dnp3',  color: '#f97316' },
+  { id: 'icmp',  color: '#84cc16' },
+  { id: 'custom',color: '#94a3b8' },
+];
+
+function markerId(proto) {
+  if (!proto) return 'def';
+  return proto.toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+
+// ─── Geometry helpers ─────────────────────────────────────────────────────────
 function getEdgePoint(el, targetX, targetY) {
   const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
   const dx = targetX - cx, dy = targetY - cy;
@@ -31,27 +109,344 @@ function connectionPath(from, to) {
   const mx = (fp.x + tp.x) / 2;
   const dist = Math.hypot(tp.x - fp.x, tp.y - fp.y);
   const my = (fp.y + tp.y) / 2 - Math.min(dist * 0.15, 40);
-  return { d: `M ${fp.x} ${fp.y} Q ${mx} ${my} ${tp.x} ${tp.y}`, mid: { x: mx, y: my } };
+  return { d: `M ${fp.x} ${fp.y} Q ${mx} ${my} ${tp.x} ${tp.y}`, mid: { x: mx, y: my - 6 }, fp, tp };
 }
 
-// ─── Shape renderer ───────────────────────────────────────────────────────────
-function Shape({ el, isSelected, isConnecting, tool, onMouseDown, onDblClick, onConnectClick, editingId, editLabel, onEditChange, onEditCommit }) {
-  const def = ELEMENT_DEFS[el.type];
-  const sw = isSelected ? 2.5 : 1.5;
-  const selBox = isSelected ? (
-    <rect x={el.x - 5} y={el.y - 5} width={el.w + 10} height={el.h + 10}
-      rx={6} fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="5,3" />
-  ) : null;
+// ─── Shape body renderers (SVG, no interaction wrappers) ──────────────────────
+function renderShape(el, sw, isSelected) {
+  const { color, bg } = ELEMENT_DEFS[el.type] || { color: '#6b7280', bg: '#f3f4f6' };
+  const { x, y, w, h } = el;
+  const cx = x + w / 2, cy = y + h / 2;
 
+  // Stick-figure helper
+  const stickFigure = (accent) => (
+    <>
+      <circle cx={cx} cy={y + 16} r={13} fill={bg} stroke={accent || color} strokeWidth={sw} />
+      <line x1={cx} y1={y+29} x2={cx} y2={y+55} stroke={accent || color} strokeWidth={sw} />
+      <line x1={cx-16} y1={y+42} x2={cx+16} y2={y+42} stroke={accent || color} strokeWidth={sw} />
+      <line x1={cx} y1={y+55} x2={cx-12} y2={y+78} stroke={accent || color} strokeWidth={sw} />
+      <line x1={cx} y1={y+55} x2={cx+12} y2={y+78} stroke={accent || color} strokeWidth={sw} />
+    </>
+  );
+
+  // Server box helper
+  const serverBox = (iconFn) => (
+    <>
+      <rect x={x} y={y} width={w} height={h} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+      <rect x={x} y={y} width={w} height={16} rx={4} fill={color} opacity={0.15} />
+      <circle cx={x+10} cy={y+8} r={3} fill={color} opacity={0.6} />
+      <circle cx={x+20} cy={y+8} r={3} fill={color} opacity={0.4} />
+      {iconFn && iconFn()}
+    </>
+  );
+
+  // Cylinder helper
+  const cylinder = (label) => {
+    const ry = 8, bodyY = y + ry;
+    return (
+      <>
+        <rect x={x} y={bodyY} width={w} height={h - ry*2} fill={bg} stroke={color} strokeWidth={sw} />
+        <ellipse cx={cx} cy={bodyY} rx={w/2} ry={ry} fill={bg} stroke={color} strokeWidth={sw} />
+        <ellipse cx={cx} cy={y+h-ry} rx={w/2} ry={ry} fill={bg} stroke={color} strokeWidth={sw} />
+        {label && <text x={cx} y={cy+4} textAnchor="middle" fontSize={10} fill={color} fontWeight="700">{label}</text>}
+      </>
+    );
+  };
+
+  switch (el.type) {
+    // ── People ──
+    case 'user':
+      return stickFigure(color);
+    case 'admin':
+      return (
+        <>
+          {stickFigure(color)}
+          {/* key badge */}
+          <rect x={cx+2} y={y+12} width={14} height={9} rx={2} fill={color} opacity={0.85} />
+          <text x={cx+9} y={y+20} textAnchor="middle" fontSize={7} fill="white" fontWeight="700">★</text>
+        </>
+      );
+    case 'attacker':
+      return (
+        <>
+          {stickFigure(color)}
+          {/* hood triangle */}
+          <polygon points={`${cx},${y+2} ${cx-15},${y+28} ${cx+15},${y+28}`}
+            fill={bg} stroke={color} strokeWidth={sw} opacity={0.9} />
+        </>
+      );
+    case 'external_actor':
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} fill={bg} stroke={color} strokeWidth={sw} />
+          <rect x={x+5} y={y+5} width={w-10} height={h-10} fill="none" stroke={color} strokeWidth={1} opacity={0.5} />
+        </>
+      );
+
+    // ── Servers ──
+    case 'web_server':
+      return serverBox(() => (
+        <>
+          <circle cx={cx} cy={y+h/2+4} r={14} fill="none" stroke={color} strokeWidth={1.2} opacity={0.5} />
+          <line x1={cx-14} y1={y+h/2+4} x2={cx+14} y2={y+h/2+4} stroke={color} strokeWidth={1} opacity={0.4} />
+          <ellipse cx={cx} cy={y+h/2+4} rx={7} ry={14} fill="none" stroke={color} strokeWidth={1} opacity={0.4} />
+        </>
+      ));
+    case 'app_server':
+      return serverBox(() => (
+        <>
+          <rect x={x+8} y={y+24} width={w-16} height={6} rx={2} fill={color} opacity={0.2} />
+          <rect x={x+8} y={y+34} width={w-16} height={6} rx={2} fill={color} opacity={0.2} />
+          <rect x={x+8} y={y+44} width={(w-16)*0.7} height={6} rx={2} fill={color} opacity={0.2} />
+        </>
+      ));
+    case 'db_server':
+      return (
+        <>
+          {cylinder()}
+          <rect x={x} y={y} width={w} height={16} rx={4} fill={color} opacity={0.15} />
+          <circle cx={x+10} cy={y+8} r={3} fill={color} opacity={0.6} />
+        </>
+      );
+    case 'file_server':
+      return serverBox(() => (
+        <>
+          <rect x={cx-14} y={y+26} width={28} height={20} rx={2} fill="none" stroke={color} strokeWidth={1.2} opacity={0.5} />
+          <path d={`M ${cx-14} ${y+26} L ${cx-14} ${y+22} L ${cx-6} ${y+22} L ${cx-2} ${y+26}`} fill="none" stroke={color} strokeWidth={1} opacity={0.5} />
+        </>
+      ));
+    case 'mail_server':
+      return serverBox(() => (
+        <>
+          <rect x={cx-16} y={y+24} width={32} height={20} rx={2} fill="none" stroke={color} strokeWidth={1.2} opacity={0.5} />
+          <polyline points={`${cx-16},${y+24} ${cx},${y+36} ${cx+16},${y+24}`} fill="none" stroke={color} strokeWidth={1} opacity={0.5} />
+        </>
+      ));
+
+    // ── Network ──
+    case 'firewall': {
+      const brickW = 20, brickH = 10;
+      const bricks = [];
+      for (let row = 0; row < 3; row++) {
+        const offset = row % 2 === 0 ? 0 : brickW / 2;
+        for (let col = 0; col < 3; col++) {
+          const bx = x + 8 + col * brickW - offset;
+          const by = y + 12 + row * brickH;
+          if (bx + brickW > x + w - 5 || bx < x + 5) continue;
+          bricks.push(<rect key={`${row}-${col}`} x={bx} y={by} width={brickW-2} height={brickH-2} rx={1} fill={color} opacity={0.18} stroke={color} strokeWidth={0.5} opacity2={0.3} />);
+        }
+      }
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+          {bricks}
+        </>
+      );
+    }
+    case 'router': {
+      const r = Math.min(w, h) / 2 - 4;
+      return (
+        <>
+          <circle cx={cx} cy={cy} r={r} fill={bg} stroke={color} strokeWidth={sw} />
+          <line x1={cx-r} y1={cy} x2={cx+r} y2={cy} stroke={color} strokeWidth={1.2} opacity={0.6} />
+          <line x1={cx} y1={cy-r} x2={cx} y2={cy+r} stroke={color} strokeWidth={1.2} opacity={0.6} />
+          <circle cx={cx-r-5} cy={cy} r={4} fill={color} opacity={0.5} />
+          <circle cx={cx+r+5} cy={cy} r={4} fill={color} opacity={0.5} />
+          <circle cx={cx} cy={cy-r-5} r={4} fill={color} opacity={0.5} />
+          <circle cx={cx} cy={cy+r+5} r={4} fill={color} opacity={0.5} />
+          <circle cx={cx} cy={cy} r={5} fill={color} opacity={0.7} />
+        </>
+      );
+    }
+    case 'switch':
+      return (
+        <>
+          <rect x={x} y={y+10} width={w} height={h-20} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+          {Array.from({ length: 8 }).map((_, i) => (
+            <rect key={i} x={x+8+i*13} y={y+h-10} width={9} height={8} rx={1} fill={color} opacity={0.4} />
+          ))}
+          <rect x={x} y={y+10} width={w} height={12} rx={4} fill={color} opacity={0.12} />
+        </>
+      );
+    case 'load_balancer':
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+          {/* funnel lines */}
+          <line x1={cx-30} y1={y+14} x2={cx} y2={cy} stroke={color} strokeWidth={1.5} opacity={0.5} />
+          <line x1={cx+30} y1={y+14} x2={cx} y2={cy} stroke={color} strokeWidth={1.5} opacity={0.5} />
+          <line x1={cx} y1={cy} x2={cx-22} y2={y+h-14} stroke={color} strokeWidth={1.5} opacity={0.5} />
+          <line x1={cx} y1={cy} x2={cx+22} y2={y+h-14} stroke={color} strokeWidth={1.5} opacity={0.5} />
+          <circle cx={cx} cy={cy} r={5} fill={color} opacity={0.6} />
+        </>
+      );
+    case 'vpn_gateway':
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+          {/* lock icon */}
+          <rect x={cx-10} y={cy-2} width={20} height={14} rx={3} fill={color} opacity={0.25} stroke={color} strokeWidth={1} />
+          <path d={`M ${cx-7} ${cy-2} Q ${cx-7} ${cy-14} ${cx} ${cy-14} Q ${cx+7} ${cy-14} ${cx+7} ${cy-2}`}
+            fill="none" stroke={color} strokeWidth={1.5} opacity={0.6} />
+          <circle cx={cx} cy={cy+5} r={3} fill={color} opacity={0.7} />
+        </>
+      );
+    case 'ids_ips':
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+          {/* eye icon */}
+          <path d={`M ${x+12} ${cy} Q ${cx} ${cy-14} ${x+w-12} ${cy} Q ${cx} ${cy+14} ${x+12} ${cy}`}
+            fill="none" stroke={color} strokeWidth={1.5} opacity={0.6} />
+          <circle cx={cx} cy={cy} r={6} fill="none" stroke={color} strokeWidth={1.5} opacity={0.6} />
+          <circle cx={cx} cy={cy} r={3} fill={color} opacity={0.5} />
+        </>
+      );
+
+    // ── Data Stores ──
+    case 'database':
+      return cylinder();
+    case 'cache':
+      return (
+        <>
+          {cylinder()}
+          <text x={cx} y={cy+5} textAnchor="middle" fontSize={14} fill={color} opacity={0.5}>⚡</text>
+        </>
+      );
+    case 'file_store': {
+      const pages = [
+        { dx: 6, dy: 4 },
+        { dx: 3, dy: 2 },
+        { dx: 0, dy: 0 },
+      ];
+      return (
+        <>
+          {pages.map((p, i) => (
+            <rect key={i} x={x+15+p.dx} y={y+12+p.dy} width={w-30} height={h-24} rx={2}
+              fill={i === 2 ? bg : 'white'} stroke={color} strokeWidth={i === 2 ? sw : 0.8} opacity={0.7+i*0.15} />
+          ))}
+          <line x1={x+20} y1={y+25} x2={x+w-20} y2={y+25} stroke={color} strokeWidth={1} opacity={0.4} />
+          <line x1={x+20} y1={y+33} x2={x+w-20} y2={y+33} stroke={color} strokeWidth={1} opacity={0.4} />
+        </>
+      );
+    }
+    case 'cloud_storage': {
+      const cloudCx = cx, cloudCy = cy - 4;
+      return (
+        <>
+          <path d={`M ${cloudCx-45} ${cloudCy+16}
+            Q ${cloudCx-45} ${cloudCy-8} ${cloudCx-22} ${cloudCy-8}
+            Q ${cloudCx-18} ${cloudCy-22} ${cloudCx} ${cloudCy-22}
+            Q ${cloudCx+18} ${cloudCy-22} ${cloudCx+22} ${cloudCy-8}
+            Q ${cloudCx+45} ${cloudCy-8} ${cloudCx+45} ${cloudCy+16} Z`}
+            fill={bg} stroke={color} strokeWidth={sw} />
+          {/* cylinder at bottom */}
+          <ellipse cx={cloudCx} cy={cloudCy+16} rx={22} ry={6} fill={bg} stroke={color} strokeWidth={1} />
+          <line x1={cloudCx-22} y1={cloudCy+16} x2={cloudCx-22} y2={cloudCy+26} stroke={color} strokeWidth={1} />
+          <line x1={cloudCx+22} y1={cloudCy+16} x2={cloudCx+22} y2={cloudCy+26} stroke={color} strokeWidth={1} />
+          <ellipse cx={cloudCx} cy={cloudCy+26} rx={22} ry={6} fill={bg} stroke={color} strokeWidth={1} />
+        </>
+      );
+    }
+
+    // ── Services ──
+    case 'api_service':
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} rx={6} fill={bg} stroke={color} strokeWidth={sw} />
+          <text x={cx} y={cy+5} textAnchor="middle" fontSize={13} fill={color} fontWeight="700" fontFamily="monospace">{'</>'}</text>
+        </>
+      );
+    case 'microservice': {
+      const hs = Math.min(w,h) / 2 - 2;
+      const hex = `${cx},${y+4} ${cx+hs},${cy-hs/2+4} ${cx+hs},${cy+hs/2-4} ${cx},${y+h-4} ${cx-hs},${cy+hs/2-4} ${cx-hs},${cy-hs/2+4}`;
+      return (
+        <>
+          <polygon points={hex} fill={bg} stroke={color} strokeWidth={sw} />
+        </>
+      );
+    }
+    case 'cloud_service': {
+      const ccx = cx, ccy = cy;
+      return (
+        <>
+          <path d={`M ${ccx-52} ${ccy+12}
+            Q ${ccx-52} ${ccy-10} ${ccx-28} ${ccy-10}
+            Q ${ccx-22} ${ccy-24} ${ccx} ${ccy-24}
+            Q ${ccx+22} ${ccy-24} ${ccx+28} ${ccy-10}
+            Q ${ccx+52} ${ccy-10} ${ccx+52} ${ccy+12} Z`}
+            fill={bg} stroke={color} strokeWidth={sw} />
+          <rect x={x+10} y={ccy+12} width={w-20} height={10} rx={3} fill={bg} stroke={color} strokeWidth={0.8} opacity={0.6} />
+        </>
+      );
+    }
+    case 'mobile_app': {
+      const mw = 40, mh = 72, mx = cx - mw/2, my = y + (h-mh)/2;
+      return (
+        <>
+          <rect x={mx} y={my} width={mw} height={mh} rx={8} fill={bg} stroke={color} strokeWidth={sw} />
+          <rect x={mx+4} y={my+8} width={mw-8} height={mh-24} rx={3} fill={color} opacity={0.08} />
+          <rect x={mx+12} y={my+mh-10} width={16} height={5} rx={2} fill={color} opacity={0.4} />
+          <line x1={mx+14} y1={my+5} x2={mx+mw-14} y2={my+5} stroke={color} strokeWidth={2} strokeLinecap="round" opacity={0.5} />
+        </>
+      );
+    }
+    case 'web_app': {
+      const tabH = 14;
+      return (
+        <>
+          <rect x={x} y={y+tabH} width={w} height={h-tabH} rx={4} fill={bg} stroke={color} strokeWidth={sw} />
+          <rect x={x} y={y+tabH} width={w} height={12} fill={color} opacity={0.1} />
+          <circle cx={x+10} cy={y+tabH+6} r={3} fill={color} opacity={0.5} />
+          <circle cx={x+20} cy={y+tabH+6} r={3} fill={color} opacity={0.35} />
+          <circle cx={x+30} cy={y+tabH+6} r={3} fill={color} opacity={0.25} />
+          <rect x={x+4} y={y+tabH} width={40} height={tabH} rx={3} fill={color} opacity={0.15} />
+          {/* address bar */}
+          <rect x={x+48} y={y+tabH+4} width={w-56} height={6} rx={3} fill={color} opacity={0.1} />
+        </>
+      );
+    }
+
+    // ── Zones ──
+    default:
+      // All zone types and any unrecognised type
+      return (
+        <>
+          <rect x={x} y={y} width={w} height={h} rx={8}
+            fill={ELEMENT_DEFS[el.type]?.bg ?? 'rgba(243,244,246,0.4)'}
+            stroke={ELEMENT_DEFS[el.type]?.color ?? '#6b7280'}
+            strokeWidth={isSelected ? 2.5 : 2}
+            strokeDasharray="10,6" />
+        </>
+      );
+  }
+}
+
+// ─── Shape component (interaction wrapper) ────────────────────────────────────
+function Shape({ el, isSelected, isConnecting, tool, onMouseDown, onDblClick, onConnectClick, editingId, editLabel, onEditChange, onEditCommit }) {
+  const def = ELEMENT_DEFS[el.type] || { color: '#6b7280', label: el.type };
+  const isZone = ZONE_TYPES.has(el.type);
   const cursor = tool === 'connect' ? 'crosshair' : 'move';
-  const handleDown = (e) => { e.stopPropagation(); onMouseDown(e, el.id); };
-  const handleDbl  = (e) => { e.stopPropagation(); onDblClick(e, el.id); };
+  const sw = isSelected ? 2.5 : 1.5;
+  const { x, y, w, h } = el;
+  const cx = x + w / 2;
+
+  const handleDown  = (e) => { e.stopPropagation(); onMouseDown(e, el.id); };
+  const handleDbl   = (e) => { e.stopPropagation(); onDblClick(e, el.id); };
   const handleClick = (e) => { e.stopPropagation(); if (tool === 'connect') onConnectClick(el.id); };
 
+  // Label position
+  const isStickFigure = ['user','admin','attacker'].includes(el.type);
+  const labelY = isStickFigure ? y + h - 2 : (isZone ? y + 18 : y + h + 14);
+  const labelAnchor = isZone ? 'start' : 'middle';
+  const labelX = isZone ? x + 10 : cx;
+
   const labelEl = editingId === el.id ? (
-    <foreignObject x={el.x} y={el.y + el.h / 2 - 14} width={el.w} height={28}>
+    <foreignObject x={x} y={isZone ? y + 4 : y + h + 2} width={isZone ? w * 0.6 : w} height={24}>
       <input
-        style={{ width: '100%', textAlign: 'center', border: '1px solid #3b82f6', borderRadius: 4, padding: '2px 6px', fontSize: 12, outline: 'none' }}
+        style={{ width: '100%', textAlign: isZone ? 'left' : 'center', border: '1px solid #3b82f6',
+          borderRadius: 4, padding: '2px 6px', fontSize: isZone ? 11 : 12, outline: 'none',
+          fontWeight: 700, color: def.color, background: 'white' }}
         value={editLabel}
         onChange={onEditChange}
         onBlur={onEditCommit}
@@ -61,121 +456,264 @@ function Shape({ el, isSelected, isConnecting, tool, onMouseDown, onDblClick, on
     </foreignObject>
   ) : null;
 
-  switch (el.type) {
-    case 'actor':
-      return (
-        <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor }}>
-          {selBox}
-          {isConnecting && <rect x={el.x-6} y={el.y-6} width={el.w+12} height={el.h+12} rx={8} fill="#dbeafe" opacity={0.5} />}
-          <circle cx={el.x + el.w/2} cy={el.y + 18} r={14} fill={def.bg} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x+el.w/2} y1={el.y+32} x2={el.x+el.w/2} y2={el.y+60} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x+el.w/2-18} y1={el.y+46} x2={el.x+el.w/2+18} y2={el.y+46} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x+el.w/2} y1={el.y+60} x2={el.x+el.w/2-13} y2={el.y+82} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x+el.w/2} y1={el.y+60} x2={el.x+el.w/2+13} y2={el.y+82} stroke={def.color} strokeWidth={sw} />
-          {editingId !== el.id && (
-            <text x={el.x+el.w/2} y={el.y+el.h-2} textAnchor="middle" fontSize={11} fill="#1f2937" fontWeight="600">{el.label}</text>
-          )}
-          {labelEl}
-        </g>
-      );
+  return (
+    <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor }}>
+      {/* Selection box */}
+      {isSelected && !isZone && (
+        <rect x={x-5} y={y-5} width={w+10} height={h+10} rx={6}
+          fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="5,3" />
+      )}
+      {/* Connect hover highlight */}
+      {isConnecting && (
+        <rect x={x-8} y={y-8} width={w+16} height={h+16} rx={8}
+          fill="#ede9fe" opacity={0.4} />
+      )}
+      {/* Shape body */}
+      {renderShape(el, sw, isSelected)}
+      {/* Label */}
+      {editingId !== el.id && (
+        <text x={labelX} y={labelY} textAnchor={labelAnchor} fontSize={isZone ? 11 : 12}
+          fill={isZone ? def.color : '#1f2937'} fontWeight={isZone ? 700 : 600}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}>
+          {el.label}
+        </text>
+      )}
+      {labelEl}
+    </g>
+  );
+}
 
-    case 'process':
-      return (
-        <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor }}>
-          {selBox}
-          {isConnecting && <rect x={el.x-6} y={el.y-6} width={el.w+12} height={el.h+12} rx={14} fill="#ede9fe" opacity={0.5} />}
-          <rect x={el.x} y={el.y} width={el.w} height={el.h} rx={8} fill={def.bg} stroke={def.color} strokeWidth={sw} />
-          {editingId !== el.id && (
-            <text x={el.x+el.w/2} y={el.y+el.h/2+4} textAnchor="middle" fontSize={12} fill="#1f2937" fontWeight="600">{el.label}</text>
-          )}
-          {labelEl}
-        </g>
-      );
+// ─── Palette mini-icon ─────────────────────────────────────────────────────────
+function PaletteIcon({ type, color, bg }) {
+  const W = 38, H = 28;
+  const cx = W / 2, cy = H / 2;
 
-    case 'data_store': {
-      const t = 10;
-      return (
-        <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor }}>
-          {selBox}
-          {isConnecting && <rect x={el.x-6} y={el.y-6} width={el.w+12} height={el.h+12} rx={4} fill="#fef3c7" opacity={0.5} />}
-          <rect x={el.x} y={el.y+t} width={el.w} height={el.h-t*2} fill={def.bg} />
-          <line x1={el.x} y1={el.y+t} x2={el.x+el.w} y2={el.y+t} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x} y1={el.y+el.h-t} x2={el.x+el.w} y2={el.y+el.h-t} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x} y1={el.y+t} x2={el.x} y2={el.y+el.h-t} stroke={def.color} strokeWidth={sw} />
-          <line x1={el.x+el.w} y1={el.y+t} x2={el.x+el.w} y2={el.y+el.h-t} stroke={def.color} strokeWidth={sw} />
-          {editingId !== el.id && (
-            <text x={el.x+el.w/2} y={el.y+el.h/2+4} textAnchor="middle" fontSize={12} fill="#1f2937" fontWeight="600">{el.label}</text>
-          )}
-          {labelEl}
-        </g>
-      );
+  const stickPalette = () => (
+    <svg width={22} height={32} viewBox="0 0 22 32">
+      <circle cx={11} cy={7} r={6} fill={bg} stroke={color} strokeWidth={1.5} />
+      <line x1={11} y1={13} x2={11} y2={24} stroke={color} strokeWidth={1.5} />
+      <line x1={4}  y1={19} x2={18} y2={19} stroke={color} strokeWidth={1.5} />
+      <line x1={11} y1={24} x2={5}  y2={32} stroke={color} strokeWidth={1.5} />
+      <line x1={11} y1={24} x2={17} y2={32} stroke={color} strokeWidth={1.5} />
+    </svg>
+  );
+
+  const serverPalette = () => (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+      <rect x={1} y={1} width={W-2} height={H-2} rx={3} fill={bg} stroke={color} strokeWidth={1.5} />
+      <rect x={1} y={1} width={W-2} height={8}   rx={3} fill={color} opacity={0.2} />
+      <circle cx={6} cy={5} r={2} fill={color} opacity={0.7} />
+      <circle cx={13} cy={5} r={2} fill={color} opacity={0.5} />
+    </svg>
+  );
+
+  const cylinderPalette = () => (
+    <svg width={W} height={H+4} viewBox={`0 0 ${W} ${H+4}`}>
+      <rect x={4} y={5} width={W-8} height={H-6} fill={bg} stroke={color} strokeWidth={1.5} />
+      <ellipse cx={W/2} cy={5} rx={(W-8)/2} ry={5} fill={bg} stroke={color} strokeWidth={1.5} />
+      <ellipse cx={W/2} cy={H-1} rx={(W-8)/2} ry={5} fill={bg} stroke={color} strokeWidth={1.5} />
+    </svg>
+  );
+
+  switch (type) {
+    case 'user': case 'admin': case 'attacker': return stickPalette();
+    case 'external_actor':
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={1} width={W-2} height={H-2} fill={bg} stroke={color} strokeWidth={1.5} />
+        <rect x={4} y={4} width={W-8} height={H-8} fill="none" stroke={color} strokeWidth={1} opacity={0.6} />
+      </svg>;
+    case 'web_server': case 'app_server': case 'file_server': case 'mail_server': case 'db_server':
+    case 'ids_ips': case 'vpn_gateway':
+      return serverPalette();
+    case 'database': case 'cache': case 'file_store':
+      return cylinderPalette();
+    case 'cloud_storage': case 'cloud_service': {
+      const ccx = W/2, ccy = H/2 - 2;
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <path d={`M ${ccx-16} ${ccy+8} Q ${ccx-16} ${ccy-2} ${ccx-8} ${ccy-2}
+          Q ${ccx-5} ${ccy-9} ${ccx} ${ccy-9} Q ${ccx+5} ${ccy-9} ${ccx+8} ${ccy-2}
+          Q ${ccx+16} ${ccy-2} ${ccx+16} ${ccy+8} Z`}
+          fill={bg} stroke={color} strokeWidth={1.5} />
+      </svg>;
     }
-
-    case 'external':
-      return (
-        <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor }}>
-          {selBox}
-          {isConnecting && <rect x={el.x-6} y={el.y-6} width={el.w+12} height={el.h+12} fill="#f3f4f6" opacity={0.5} />}
-          <rect x={el.x} y={el.y} width={el.w} height={el.h} fill={def.bg} stroke={def.color} strokeWidth={sw} />
-          <rect x={el.x+5} y={el.y+5} width={el.w-10} height={el.h-10} fill="none" stroke={def.color} strokeWidth={1} opacity={0.6} />
-          {editingId !== el.id && (
-            <text x={el.x+el.w/2} y={el.y+el.h/2+4} textAnchor="middle" fontSize={12} fill="#1f2937" fontWeight="600">{el.label}</text>
-          )}
-          {labelEl}
-        </g>
-      );
-
-    case 'trust_boundary':
-      return (
-        <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor, opacity: 0.85 }}>
-          <rect x={el.x} y={el.y} width={el.w} height={el.h} rx={8}
-            fill={def.bg} stroke={def.color} strokeWidth={isSelected ? 2.5 : 2} strokeDasharray="10,5" />
-          {editingId !== el.id
-            ? <text x={el.x+10} y={el.y+18} fontSize={11} fill={def.color} fontWeight="700">{el.label}</text>
-            : <foreignObject x={el.x+4} y={el.y+4} width={el.w-8} height={22}>
-                <input
-                  style={{ width: '100%', fontSize: 11, fontWeight: 700, color: def.color, border: 'none', background: 'transparent', outline: 'none' }}
-                  value={editLabel}
-                  onChange={onEditChange}
-                  onBlur={onEditCommit}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') e.target.blur(); }}
-                  autoFocus
-                />
-              </foreignObject>
-          }
-        </g>
-      );
-
-    default: return null;
+    case 'firewall':
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={1} width={W-2} height={H-2} rx={3} fill={bg} stroke={color} strokeWidth={1.5} />
+        {[0,1,2].map(row => [0,1].map(col => (
+          <rect key={`${row}${col}`} x={4+col*17+(row%2)*8} y={4+row*7} width={14} height={5} rx={1}
+            fill={color} opacity={0.2} stroke={color} strokeWidth={0.5} />
+        )))}
+      </svg>;
+    case 'router': {
+      const r = Math.min(W,H)/2 - 3;
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <circle cx={cx} cy={cy} r={r} fill={bg} stroke={color} strokeWidth={1.5} />
+        <line x1={cx-r} y1={cy} x2={cx+r} y2={cy} stroke={color} strokeWidth={1} opacity={0.6} />
+        <line x1={cx} y1={cy-r} x2={cx} y2={cy+r} stroke={color} strokeWidth={1} opacity={0.6} />
+      </svg>;
+    }
+    case 'switch':
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={4} width={W-2} height={H-8} rx={3} fill={bg} stroke={color} strokeWidth={1.5} />
+        {[0,1,2,3,4].map(i => <rect key={i} x={4+i*7} y={H-6} width={5} height={5} rx={1} fill={color} opacity={0.4} />)}
+      </svg>;
+    case 'load_balancer':
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={1} width={W-2} height={H-2} rx={3} fill={bg} stroke={color} strokeWidth={1.5} />
+        <line x1={cx-12} y1={6} x2={cx} y2={cy} stroke={color} strokeWidth={1.5} opacity={0.6} />
+        <line x1={cx+12} y1={6} x2={cx} y2={cy} stroke={color} strokeWidth={1.5} opacity={0.6} />
+        <line x1={cx} y1={cy} x2={cx-10} y2={H-4} stroke={color} strokeWidth={1.5} opacity={0.6} />
+        <line x1={cx} y1={cy} x2={cx+10} y2={H-4} stroke={color} strokeWidth={1.5} opacity={0.6} />
+      </svg>;
+    case 'api_service':
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={1} width={W-2} height={H-2} rx={5} fill={bg} stroke={color} strokeWidth={1.5} />
+        <text x={cx} y={cy+5} textAnchor="middle" fontSize={11} fill={color} fontWeight="700" fontFamily="monospace">{'</>'}</text>
+      </svg>;
+    case 'microservice': {
+      const hs = Math.min(W,H)/2-2;
+      const hex = `${cx},${2} ${cx+hs},${cy-hs/2+2} ${cx+hs},${cy+hs/2-2} ${cx},${H-2} ${cx-hs},${cy+hs/2-2} ${cx-hs},${cy-hs/2+2}`;
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <polygon points={hex} fill={bg} stroke={color} strokeWidth={1.5} />
+      </svg>;
+    }
+    case 'mobile_app':
+      return <svg width={22} height={32} viewBox="0 0 22 32">
+        <rect x={1} y={1} width={20} height={30} rx={4} fill={bg} stroke={color} strokeWidth={1.5} />
+        <rect x={4} y={5} width={14} height={18} rx={2} fill={color} opacity={0.1} />
+        <rect x={7} y={27} width={8} height={3} rx={1} fill={color} opacity={0.4} />
+      </svg>;
+    case 'web_app':
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={6} width={W-2} height={H-7} rx={3} fill={bg} stroke={color} strokeWidth={1.5} />
+        <rect x={1} y={6} width={W-2} height={8} fill={color} opacity={0.1} />
+        <circle cx={6}  cy={10} r={2} fill={color} opacity={0.5} />
+        <circle cx={12} cy={10} r={2} fill={color} opacity={0.35} />
+        <rect x={1} y={1} width={22} height={8} rx={3} fill={bg} stroke={color} strokeWidth={1} opacity={0.7} />
+      </svg>;
+    default: // zones
+      return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <rect x={1} y={1} width={W-2} height={H-2} rx={4}
+          fill={bg} stroke={color} strokeWidth={1.5} strokeDasharray="6,3" />
+      </svg>;
   }
+}
+
+// ─── Connection edit panel ─────────────────────────────────────────────────────
+function ConnectionPanel({ conn, position, svgRect, onUpdate, onDelete, onClose }) {
+  if (!conn || !position || !svgRect) return null;
+  const left = svgRect.left + position.x;
+  const top  = svgRect.top  + position.y - 110;
+
+  return (
+    <div
+      className="fixed z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-3 w-64"
+      style={{ left: Math.min(left, window.innerWidth - 270), top: Math.max(top, 8) }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Connection</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-0.5 rounded"><X className="w-3.5 h-3.5" /></button>
+      </div>
+
+      {/* Label */}
+      <div className="mb-2">
+        <label className="text-xs text-gray-500 block mb-1">Label</label>
+        <input
+          className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+          value={conn.label || ''}
+          onChange={(e) => onUpdate({ label: e.target.value })}
+          placeholder="e.g. Login request"
+        />
+      </div>
+
+      {/* Protocol */}
+      <div className="mb-2">
+        <label className="text-xs text-gray-500 block mb-1">Protocol</label>
+        <div className="flex flex-wrap gap-1">
+          {Object.entries(PROTOCOLS).map(([key, proto]) => (
+            <button
+              key={key}
+              onClick={() => onUpdate({ protocol: key })}
+              className={`px-2 py-0.5 text-xs rounded-full font-medium border transition-all ${
+                (conn.protocol || 'Custom') === key
+                  ? 'text-white border-transparent shadow'
+                  : 'text-gray-500 border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+              style={(conn.protocol || 'Custom') === key ? { background: proto.color, borderColor: proto.color } : {}}
+            >{proto.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Direction */}
+      <div className="mb-3">
+        <label className="text-xs text-gray-500 block mb-1">Direction</label>
+        <div className="flex gap-1">
+          {[
+            { val: 'forward',       label: '→',  title: 'Forward' },
+            { val: 'backward',      label: '←',  title: 'Backward' },
+            { val: 'bidirectional', label: '↔',  title: 'Bidirectional' },
+          ].map(({ val, label, title }) => (
+            <button key={val} title={title}
+              onClick={() => onUpdate({ direction: val })}
+              className={`flex-1 py-1 text-sm rounded-lg border font-bold transition-all ${
+                (conn.direction || 'forward') === val
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'text-gray-500 border-gray-200 hover:border-gray-400 bg-white'
+              }`}
+            >{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <button
+        onClick={onDelete}
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+      >
+        <Trash2 className="w-3 h-3" />Delete connection
+      </button>
+    </div>
+  );
 }
 
 // ─── Main canvas component ────────────────────────────────────────────────────
 export default function ThreatModelCanvas({ value, onChange }) {
   const { elements = [], connections = [] } = value || {};
-  const svgRef = useRef(null);
+  const svgRef  = useRef(null);
+  const wrapRef = useRef(null);
 
-  const [tool, setTool]         = useState('select');   // 'select' | 'connect'
-  const [dragging, setDragging] = useState(null);       // { id, ox, oy }
-  const [connecting, setConnecting] = useState(null);   // fromId
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [selected, setSelected] = useState(null);       // elementId or connectionId
-  const [editing, setEditing]   = useState(null);       // { id, label }
-  const [mode, setMode]         = useState('canvas');   // 'canvas' | 'image'
+  const [tool,       setTool]       = useState('select');
+  const [dragging,   setDragging]   = useState(null);
+  const [connecting, setConnecting] = useState(null);
+  const [mousePos,   setMousePos]   = useState({ x: 0, y: 0 });
+  const [selected,   setSelected]   = useState(null);
+  const [editing,    setEditing]    = useState(null);
+  const [mode,       setMode]       = useState('canvas');
   const [uploadedImage, setUploadedImage] = useState(value?.uploadedImage || null);
+  const [collapsed,  setCollapsed]  = useState({});
+  const [svgRect,    setSvgRect]    = useState(null);
   const fileRef = useRef(null);
 
   const emit = useCallback((els, conns, img) => {
     onChange?.({ elements: els, connections: conns, uploadedImage: img ?? uploadedImage });
   }, [onChange, uploadedImage]);
 
-  // ── SVG coordinate helper ──────────────────────────────────────────────────
+  // Update svgRect on resize
+  useEffect(() => {
+    const update = () => { if (svgRef.current) setSvgRect(svgRef.current.getBoundingClientRect()); };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
   const svgCoords = (e) => {
     const r = svgRef.current.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
-  // ── Palette drag ──────────────────────────────────────────────────────────
+  // ── Palette drag ────────────────────────────────────────────────────────────
   const onPaletteDragStart = (e, type) => e.dataTransfer.setData('elementType', type);
   const onCanvasDragOver   = (e) => e.preventDefault();
   const onCanvasDrop = (e) => {
@@ -189,7 +727,7 @@ export default function ThreatModelCanvas({ value, onChange }) {
     setSelected(newEl.id);
   };
 
-  // ── Element mouse events ──────────────────────────────────────────────────
+  // ── Element mouse events ───────────────────────────────────────────────────
   const onElementMouseDown = (e, id) => {
     if (tool !== 'select') return;
     setSelected(id);
@@ -203,21 +741,16 @@ export default function ThreatModelCanvas({ value, onChange }) {
     const pos = svgCoords(e);
     setMousePos(pos);
     if (!dragging) return;
-    const { x, y } = pos;
     const newEls = elements.map(el =>
-      el.id === dragging.id ? { ...el, x: x - dragging.ox, y: y - dragging.oy } : el
+      el.id === dragging.id ? { ...el, x: pos.x - dragging.ox, y: pos.y - dragging.oy } : el
     );
     emit(newEls, connections);
   };
 
-  const onSVGMouseUp = () => setDragging(null);
+  const onSVGMouseUp  = () => setDragging(null);
+  const onSVGClick    = () => { if (tool === 'select') setSelected(null); if (tool === 'connect') setConnecting(null); };
 
-  const onSVGClick = (e) => {
-    if (tool === 'select') setSelected(null);
-    if (tool === 'connect') setConnecting(null);
-  };
-
-  // ── Connect mode ──────────────────────────────────────────────────────────
+  // ── Connect mode ────────────────────────────────────────────────────────────
   const onConnectClick = (id) => {
     if (!connecting) {
       setConnecting(id);
@@ -227,107 +760,121 @@ export default function ThreatModelCanvas({ value, onChange }) {
         (c.fromId === id && c.toId === connecting)
       );
       if (!exists) {
-        const newConns = [...connections, { id: uuidv4(), fromId: connecting, toId: id, label: '' }];
+        const newConns = [...connections, {
+          id: uuidv4(), fromId: connecting, toId: id,
+          label: '', protocol: 'HTTPS', direction: 'forward',
+        }];
         emit(elements, newConns);
+        // auto-select new connection
+        setSelected(newConns[newConns.length - 1].id);
       }
       setConnecting(null);
+      setTool('select');
     }
   };
 
-  // ── Label editing ──────────────────────────────────────────────────────────
+  // ── Label editing ───────────────────────────────────────────────────────────
   const onDblClick = (e, id) => {
     const el = elements.find(el => el.id === id);
     if (el) setEditing({ id, label: el.label });
   };
-
-  const onEditChange = (e) => setEditing(prev => ({ ...prev, label: e.target.value }));
-
-  const onEditCommit = () => {
+  const onEditChange  = (e) => setEditing(prev => ({ ...prev, label: e.target.value }));
+  const onEditCommit  = () => {
     if (!editing) return;
-    const newEls = elements.map(el => el.id === editing.id ? { ...el, label: editing.label } : el);
-    emit(newEls, connections);
+    emit(elements.map(el => el.id === editing.id ? { ...el, label: editing.label } : el), connections);
     setEditing(null);
   };
 
-  // ── Delete selected ────────────────────────────────────────────────────────
+  // ── Delete selected ─────────────────────────────────────────────────────────
   const deleteSelected = useCallback(() => {
     if (!selected) return;
-    const newEls   = elements.filter(el => el.id !== selected);
-    const newConns = connections.filter(c => c.id !== selected && c.fromId !== selected && c.toId !== selected);
-    emit(newEls, newConns);
+    emit(
+      elements.filter(el => el.id !== selected),
+      connections.filter(c => c.id !== selected && c.fromId !== selected && c.toId !== selected)
+    );
     setSelected(null);
   }, [selected, elements, connections, emit]);
 
   useEffect(() => {
-    const onKey = (e) => { if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !editing) deleteSelected(); };
+    const onKey = (e) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !editing) deleteSelected();
+      if (e.key === 'Escape') { setConnecting(null); setEditing(null); }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, editing, deleteSelected]);
 
-  // ── Image upload ──────────────────────────────────────────────────────────
+  // ── Connection update ───────────────────────────────────────────────────────
+  const updateConnection = (updates) => {
+    emit(elements, connections.map(c => c.id === selected ? { ...c, ...updates } : c));
+  };
+
+  // ── Image upload ────────────────────────────────────────────────────────────
   const onImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = ev.target.result;
-      setUploadedImage(img);
-      emit(elements, connections, img);
-    };
+    reader.onload = (ev) => { const img = ev.target.result; setUploadedImage(img); emit(elements, connections, img); };
     reader.readAsDataURL(file);
   };
 
-  // ── Clear canvas ──────────────────────────────────────────────────────────
   const clearCanvas = () => { emit([], [], null); setUploadedImage(null); setSelected(null); setConnecting(null); };
 
-  // ── Render sorted (trust boundaries behind) ────────────────────────────────
+  // ── Render: zones behind everything, stick figures on top ──────────────────
   const sorted = [...elements].sort((a, b) => {
-    if (a.type === 'trust_boundary' && b.type !== 'trust_boundary') return -1;
-    if (b.type === 'trust_boundary' && a.type !== 'trust_boundary') return 1;
-    return 0;
+    const az = ZONE_TYPES.has(a.type) ? 0 : 1;
+    const bz = ZONE_TYPES.has(b.type) ? 0 : 1;
+    return az - bz;
   });
 
+  // ── Selected connection for panel ──────────────────────────────────────────
+  const selectedConn = connections.find(c => c.id === selected);
+  let connPanelPos = null;
+  if (selectedConn) {
+    const from = elements.find(e => e.id === selectedConn.fromId);
+    const to   = elements.find(e => e.id === selectedConn.toId);
+    if (from && to) connPanelPos = connectionPath(from, to).mid;
+  }
+
+  // ── Protocol color for a connection ───────────────────────────────────────
+  const connColor = (conn, isSel) => {
+    if (isSel) return '#2563eb';
+    const p = conn.protocol || 'Custom';
+    return PROTOCOLS[p]?.color ?? '#94a3b8';
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" ref={wrapRef}>
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-          <button
-            title="Select / Move"
+          <button title="Select / Move (S)"
             onClick={() => { setTool('select'); setConnecting(null); }}
             className={`p-1.5 rounded-md transition-colors ${tool === 'select' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
           ><MousePointer2 className="w-4 h-4" /></button>
-          <button
-            title="Draw Connection"
+          <button title="Draw Connection (C)"
             onClick={() => setTool('connect')}
             className={`p-1.5 rounded-md transition-colors ${tool === 'connect' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
           ><Link2 className="w-4 h-4" /></button>
         </div>
-
         <div className="h-5 w-px bg-gray-200 mx-1" />
-
-        <button
-          onClick={deleteSelected} disabled={!selected}
-          title="Delete selected (Del)"
+        <button onClick={deleteSelected} disabled={!selected} title="Delete selected (Del)"
           className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-colors"
         ><Trash2 className="w-4 h-4" /></button>
-
-        <button
-          onClick={clearCanvas}
-          title="Clear canvas"
+        <button onClick={clearCanvas} title="Clear canvas"
           className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
         ><RotateCcw className="w-4 h-4" /></button>
-
         <div className="h-5 w-px bg-gray-200 mx-1" />
-
-        {/* Mode toggle */}
+        {selected && !selectedConn && (
+          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
+            {ELEMENT_DEFS[elements.find(e=>e.id===selected)?.type]?.label ?? 'Element'} selected · Del to remove · Dbl-click to rename
+          </span>
+        )}
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 ml-auto">
-          <button
-            onClick={() => setMode('canvas')}
+          <button onClick={() => setMode('canvas')}
             className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${mode === 'canvas' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
           >Draw Diagram</button>
-          <button
-            onClick={() => setMode('image')}
+          <button onClick={() => setMode('image')}
             className={`flex items-center gap-1 px-3 py-1 text-xs rounded-md font-medium transition-colors ${mode === 'image' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
           ><ImagePlus className="w-3 h-3" />Upload Image</button>
         </div>
@@ -337,25 +884,45 @@ export default function ThreatModelCanvas({ value, onChange }) {
         {mode === 'canvas' ? (
           <>
             {/* Palette */}
-            <div className="w-40 bg-gray-50 border-r border-gray-200 flex flex-col gap-1 p-3 flex-shrink-0 overflow-y-auto">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Components</p>
-              {Object.entries(ELEMENT_DEFS).map(([type, def]) => (
-                <div
-                  key={type}
-                  draggable
-                  onDragStart={(e) => onPaletteDragStart(e, type)}
-                  className="flex flex-col items-center gap-1 p-2 rounded-lg border border-dashed cursor-grab active:cursor-grabbing hover:bg-white hover:shadow-sm transition-all select-none"
-                  style={{ borderColor: def.color + '80', background: def.bg + '60' }}
-                  title={def.desc}
-                >
-                  <PaletteIcon type={type} color={def.color} bg={def.bg} />
-                  <span className="text-xs font-medium text-center leading-tight" style={{ color: def.color }}>{def.label}</span>
-                </div>
-              ))}
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <p className="text-xs text-gray-400 flex items-start gap-1">
+            <div className="w-44 bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0 overflow-y-auto">
+              <div className="p-2">
+                {CATEGORIES.map((cat) => {
+                  const isCollapsed = collapsed[cat.id];
+                  return (
+                    <div key={cat.id} className="mb-1">
+                      <button
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                        onClick={() => setCollapsed(c => ({ ...c, [cat.id]: !c[cat.id] }))}
+                      >
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{cat.label}</span>
+                        {isCollapsed ? <ChevronRight className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
+                      </button>
+                      {!isCollapsed && (
+                        <div className="grid grid-cols-2 gap-1 mt-1 px-1 pb-1">
+                          {cat.types.map((type) => {
+                            const def = ELEMENT_DEFS[type];
+                            return (
+                              <div key={type} draggable onDragStart={(e) => onPaletteDragStart(e, type)}
+                                className="flex flex-col items-center gap-0.5 p-1.5 rounded-lg border border-dashed cursor-grab active:cursor-grabbing hover:bg-white hover:shadow-sm transition-all select-none"
+                                style={{ borderColor: def.color + '70', background: def.bg + '50' }}
+                                title={def.desc}
+                              >
+                                <PaletteIcon type={type} color={def.color} bg={def.bg} />
+                                <span className="text-xs font-medium text-center leading-tight mt-0.5 line-clamp-2"
+                                  style={{ color: def.color, fontSize: '10px' }}>{def.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-auto p-3 border-t border-gray-200">
+                <p className="text-xs text-gray-400 flex items-start gap-1 leading-relaxed">
                   <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                  Drag to canvas. Double-click to rename. Del to remove.
+                  Drag to canvas · Dbl-click to rename · Del to remove
                 </p>
               </div>
             </div>
@@ -365,8 +932,8 @@ export default function ThreatModelCanvas({ value, onChange }) {
               {connecting && (
                 <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-purple-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
                   <Link2 className="w-3 h-3" />
-                  Click another component to connect — or click canvas to cancel
-                  <button onClick={() => setConnecting(null)} className="ml-1 hover:text-purple-200"><X className="w-3 h-3" /></button>
+                  Click another component to connect · Esc to cancel
+                  <button onClick={() => { setConnecting(null); setTool('select'); }} className="ml-1 hover:text-purple-200"><X className="w-3 h-3" /></button>
                 </div>
               )}
               <svg
@@ -383,28 +950,31 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   <pattern id="canvas-grid" width="24" height="24" patternUnits="userSpaceOnUse">
                     <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#e5e7eb" strokeWidth="0.5" />
                   </pattern>
-                  <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
-                  </marker>
-                  <marker id="arrow-sel" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
-                  </marker>
-                  <marker id="arrow-connecting" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                  {/* Arrow markers for all protocols */}
+                  {MARKER_DEFS.map(({ id: mid, color }) => (
+                    <g key={mid}>
+                      <marker id={`ae-${mid}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill={color} />
+                      </marker>
+                      <marker id={`as-${mid}`} markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
+                        <polygon points="10 0, 0 3.5, 10 7" fill={color} />
+                      </marker>
+                    </g>
+                  ))}
+                  <marker id="ae-conn" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                     <polygon points="0 0, 10 3.5, 0 7" fill="#8b5cf6" />
                   </marker>
                 </defs>
 
-                {/* Grid */}
                 <rect width="100%" height="100%" fill="url(#canvas-grid)" />
 
-                {/* Empty state */}
                 {elements.length === 0 && !connecting && (
                   <g>
-                    <text x="50%" y="48%" textAnchor="middle" fill="#d1d5db" fontSize="15" fontWeight="500">
+                    <text x="50%" y="47%" textAnchor="middle" fill="#d1d5db" fontSize="15" fontWeight="500">
                       Drag components from the palette to start diagramming
                     </text>
                     <text x="50%" y="52%" textAnchor="middle" fill="#d1d5db" fontSize="13">
-                      Use the Connect tool to draw data flows between components
+                      Use the Connect tool (or press C) to draw data flows
                     </text>
                   </g>
                 )}
@@ -415,24 +985,40 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   const to   = elements.find(e => e.id === conn.toId);
                   if (!from || !to) return null;
                   const { d, mid } = connectionPath(from, to);
-                  const isSel = selected === conn.id;
+                  const isSel  = selected === conn.id;
+                  const mid_id = isSel ? 'sel' : markerId(conn.protocol || 'Custom');
+                  const c      = connColor(conn, isSel);
+                  const dir    = conn.direction || 'forward';
+                  const proto  = conn.protocol || 'Custom';
                   return (
-                    <g key={conn.id} onClick={(e) => { e.stopPropagation(); setSelected(conn.id); }} style={{ cursor: 'pointer' }}>
-                      {/* Wider invisible click target */}
-                      <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
-                      <path d={d} fill="none" stroke={isSel ? '#3b82f6' : '#94a3b8'} strokeWidth={isSel ? 2 : 1.5}
-                        markerEnd={`url(#arrow${isSel ? '-sel' : ''})`} />
+                    <g key={conn.id}
+                      onClick={(e) => { e.stopPropagation(); setSelected(conn.id); setSvgRect(svgRef.current?.getBoundingClientRect()); }}
+                      style={{ cursor: 'pointer' }}>
+                      <path d={d} fill="none" stroke="transparent" strokeWidth={14} />
+                      <path d={d} fill="none" stroke={c} strokeWidth={isSel ? 2.5 : 1.8}
+                        strokeDasharray={proto === 'UDP' || proto === 'ICMP' ? '6,4' : undefined}
+                        markerEnd={dir !== 'backward' ? `url(#ae-${mid_id})` : undefined}
+                        markerStart={dir === 'bidirectional' || dir === 'backward' ? `url(#as-${mid_id})` : undefined}
+                      />
+                      {/* Protocol badge */}
+                      {proto && proto !== 'Custom' && (
+                        <>
+                          <rect x={mid.x - 16} y={mid.y - 9} width={32} height={13} rx={6}
+                            fill={c} opacity={isSel ? 0.95 : 0.8} />
+                          <text x={mid.x} y={mid.y + 1} textAnchor="middle" fontSize={8} fill="white"
+                            fontWeight="700" style={{ pointerEvents: 'none' }}>{proto}</text>
+                        </>
+                      )}
+                      {/* Connection label */}
                       {conn.label && (
-                        <text x={mid.x} y={mid.y - 4} textAnchor="middle" fontSize={10} fill="#6b7280" fontWeight="500"
-                          style={{ pointerEvents: 'none' }}>
-                          {conn.label}
-                        </text>
+                        <text x={mid.x} y={mid.y - 12} textAnchor="middle" fontSize={10} fill="#374151"
+                          fontWeight="500" style={{ pointerEvents: 'none' }}>{conn.label}</text>
                       )}
                     </g>
                   );
                 })}
 
-                {/* Live connection line when in connect mode */}
+                {/* Live connection line */}
                 {connecting && (() => {
                   const from = elements.find(e => e.id === connecting);
                   if (!from) return null;
@@ -440,15 +1026,13 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   return (
                     <line x1={fp.x} y1={fp.y} x2={mousePos.x} y2={mousePos.y}
                       stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="6,4"
-                      markerEnd="url(#arrow-connecting)" />
+                      markerEnd="url(#ae-conn)" />
                   );
                 })()}
 
-                {/* Elements (trust_boundary renders first via sort) */}
+                {/* Elements */}
                 {sorted.map((el) => (
-                  <Shape
-                    key={el.id}
-                    el={el}
+                  <Shape key={el.id} el={el}
                     isSelected={selected === el.id}
                     isConnecting={connecting === el.id}
                     tool={tool}
@@ -462,6 +1046,18 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   />
                 ))}
               </svg>
+
+              {/* Connection edit panel (portals via fixed positioning) */}
+              {selectedConn && connPanelPos && (
+                <ConnectionPanel
+                  conn={selectedConn}
+                  position={connPanelPos}
+                  svgRect={svgRef.current?.getBoundingClientRect()}
+                  onUpdate={updateConnection}
+                  onDelete={deleteSelected}
+                  onClose={() => setSelected(null)}
+                />
+              )}
             </div>
           </>
         ) : (
@@ -469,12 +1065,13 @@ export default function ThreatModelCanvas({ value, onChange }) {
           <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-50">
             {uploadedImage ? (
               <div className="relative max-w-4xl w-full">
-                <img src={uploadedImage} alt="Uploaded diagram" className="w-full rounded-xl shadow-lg border border-gray-200 object-contain max-h-[500px]" />
+                <img src={uploadedImage} alt="Uploaded diagram"
+                  className="w-full rounded-xl shadow-lg border border-gray-200 object-contain max-h-[500px]" />
                 <button
                   onClick={() => { setUploadedImage(null); emit(elements, connections, null); }}
                   className="absolute top-3 right-3 p-1.5 bg-white rounded-full shadow-md text-gray-500 hover:text-red-500 transition-colors"
                 ><X className="w-4 h-4" /></button>
-                <p className="text-center text-xs text-gray-400 mt-3">Click the × to remove and upload a different image</p>
+                <p className="text-center text-xs text-gray-400 mt-3">Click × to remove and upload a different image</p>
               </div>
             ) : (
               <div
@@ -483,53 +1080,14 @@ export default function ThreatModelCanvas({ value, onChange }) {
               >
                 <ImagePlus className="w-10 h-10 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-600 font-medium mb-1">Upload a system diagram</p>
-                <p className="text-sm text-gray-400">PNG, JPG, SVG, PDF — drop or click to browse</p>
+                <p className="text-sm text-gray-400">PNG, JPG, SVG — drop or click to browse</p>
                 <p className="text-xs text-gray-400 mt-3">Use this as an alternative to the drawing canvas</p>
               </div>
             )}
-            <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={onImageUpload} className="hidden" />
+            <input ref={fileRef} type="file" accept="image/*" onChange={onImageUpload} className="hidden" />
           </div>
         )}
       </div>
     </div>
   );
-}
-
-// ─── Mini palette icon renderer ───────────────────────────────────────────────
-function PaletteIcon({ type, color, bg }) {
-  switch (type) {
-    case 'actor':
-      return (
-        <svg width="32" height="36" viewBox="0 0 32 36">
-          <circle cx="16" cy="9" r="7" fill={bg} stroke={color} strokeWidth="1.5" />
-          <line x1="16" y1="16" x2="16" y2="28" stroke={color} strokeWidth="1.5" />
-          <line x1="8"  y1="22" x2="24" y2="22" stroke={color} strokeWidth="1.5" />
-          <line x1="16" y1="28" x2="10" y2="36" stroke={color} strokeWidth="1.5" />
-          <line x1="16" y1="28" x2="22" y2="36" stroke={color} strokeWidth="1.5" />
-        </svg>
-      );
-    case 'process':
-      return <svg width="40" height="24" viewBox="0 0 40 24"><rect x="1" y="1" width="38" height="22" rx="5" fill={bg} stroke={color} strokeWidth="1.5" /></svg>;
-    case 'data_store':
-      return (
-        <svg width="40" height="24" viewBox="0 0 40 24">
-          <rect x="1" y="6" width="38" height="12" fill={bg} />
-          <line x1="1" y1="6" x2="39" y2="6" stroke={color} strokeWidth="1.5" />
-          <line x1="1" y1="18" x2="39" y2="18" stroke={color} strokeWidth="1.5" />
-          <line x1="1" y1="6" x2="1" y2="18" stroke={color} strokeWidth="1.5" />
-          <line x1="39" y1="6" x2="39" y2="18" stroke={color} strokeWidth="1.5" />
-        </svg>
-      );
-    case 'external':
-      return (
-        <svg width="40" height="24" viewBox="0 0 40 24">
-          <rect x="1" y="1" width="38" height="22" fill={bg} stroke={color} strokeWidth="1.5" />
-          <rect x="4" y="4" width="32" height="16" fill="none" stroke={color} strokeWidth="1" opacity="0.6" />
-        </svg>
-      );
-    case 'trust_boundary':
-      return <svg width="40" height="24" viewBox="0 0 40 24"><rect x="1" y="1" width="38" height="22" rx="4" fill={bg} stroke={color} strokeWidth="1.5" strokeDasharray="6,3" /></svg>;
-    default:
-      return null;
-  }
 }

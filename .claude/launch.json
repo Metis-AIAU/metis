@@ -5,8 +5,7 @@
       "name": "backend",
       "runtimeExecutable": "node",
       "runtimeArgs": ["--experimental-sqlite", "threat-modeler/server/index.js"],
-      "port": 3001,
-      "autoPort": true
+      "port": 3002
     },
     {
       "name": "threat-modeler",

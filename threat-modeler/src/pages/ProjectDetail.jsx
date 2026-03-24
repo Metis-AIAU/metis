@@ -26,6 +26,7 @@ import {
   Activity,
   Target,
   TrendingUp,
+  LayoutTemplate,
 } from 'lucide-react';
 import { useThreatContext, STRIDE_CATEGORIES, RISK_LEVELS, CONTROL_STATUS } from '../context/ThreatContext';
 
@@ -51,7 +52,9 @@ export default function ProjectDetail() {
     if (project) {
       setCurrentProject(project);
     }
-  }, [project, setCurrentProject]);
+    // setCurrentProject is a new function ref each render — intentionally omitted
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id]);
 
   if (!project) {
     return (
@@ -159,6 +162,13 @@ export default function ProjectDetail() {
 
           {/* Quick Actions */}
           <div className="flex items-center gap-2">
+            <Link
+              to={`/projects/${projectId}/workspace`}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 shadow-sm transition-all"
+            >
+              <LayoutTemplate className="w-4 h-4" />
+              Threat Modeling Workspace
+            </Link>
             <Link to="/threats" className="btn-secondary">
               <Plus className="w-4 h-4 mr-2" />
               Add Threat

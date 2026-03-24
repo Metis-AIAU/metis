@@ -509,3 +509,303 @@ export function configureAI(config) {
 }
 
 export { AI_CONFIG, STRIDE_TEMPLATES, CONTROL_TEMPLATES };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enhanced workspace analysis — returns detailed threat table rows with
+// rationale, recommended controls, and residual risk per threat.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RESIDUAL_FACTOR = {
+  // How much risk remains after implementing the recommended controls (0–1)
+  S: 0.25, T: 0.20, R: 0.30, I: 0.20, D: 0.25, E: 0.20,
+};
+
+const DETAILED_THREAT_DB = [
+  // ── Spoofing ───────────────────────────────────────────────────────────────
+  {
+    key: 'cred_stuffing', category: 'S', name: 'Credential Stuffing Attack',
+    description: 'Automated use of leaked username/password pairs from external breaches to gain unauthorised access to user accounts.',
+    likelihoodBase: 4, impactBase: 4,
+    getRationale: (f) => `Likelihood is HIGH because credential databases are widely available on darknet markets and automated tools make attacks trivial. Impact is HIGH because successful account takeover exposes all user data and actions.${f.networkExposure === 'internet' ? ' The internet-facing nature of this system significantly increases exposure.' : ''} The use of ${f.authMechanism || 'standard username/password'} authentication without additional controls amplifies this risk.`,
+    getResidualRationale: () => 'After implementing MFA, the overwhelming majority of credential stuffing attempts are blocked — NIST estimates >99.9% effectiveness. Rate limiting prevents automated attempts. Residual risk stems from sophisticated targeted attacks that may bypass these controls.',
+    recommendations: [
+      { name: 'Multi-Factor Authentication (MFA)', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Require TOTP, push notification, or hardware key as a second factor. Eliminates ~99.9% of credential stuffing success.' },
+      { name: 'Rate Limiting & Account Lockout', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Limit login attempts to 5 per minute per IP with exponential back-off. Lockout accounts after 10 failed attempts and alert the user.' },
+      { name: 'Pwned Password Check', type: 'DETECTIVE', effort: 'LOW', effectiveness: 'MEDIUM', description: 'Integrate HaveIBeenPwned API at registration and password reset to reject known-compromised passwords.' },
+    ],
+    applicableTo: ['web', 'api', 'auth', 'ecommerce', 'payment', 'healthcare'],
+  },
+  {
+    key: 'session_hijack', category: 'S', name: 'Session Token Hijacking',
+    description: 'An attacker intercepts or steals session tokens via network sniffing, XSS, or browser storage attacks to impersonate an authenticated user.',
+    likelihoodBase: 3, impactBase: 4,
+    getRationale: (f) => `Likelihood is MEDIUM-HIGH because session tokens transmitted without strict transport security or stored insecurely in browser localStorage are exposed to interception.${f.architectureTypes?.includes('web') ? ' Web application context increases XSS exposure.' : ''} Impact is HIGH as successful session hijacking grants full access to the user's account.`,
+    getResidualRationale: () => 'HTTPS enforcement and secure cookie attributes (HttpOnly, Secure, SameSite) remove the majority of interception vectors. Short session lifetimes limit the window of exploitation. Residual risk from sophisticated XSS-based attacks on complex web applications remains LOW.',
+    recommendations: [
+      { name: 'Enforce HTTPS / HSTS', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Redirect all HTTP to HTTPS. Set Strict-Transport-Security header with includeSubDomains and preload.' },
+      { name: 'Secure Cookie Attributes', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Set session cookies with HttpOnly, Secure, and SameSite=Strict. Never expose session tokens in URLs or localStorage.' },
+      { name: 'Short Session Lifetimes', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'MEDIUM', description: 'Expire idle sessions after 15 minutes and absolute sessions after 8 hours. Re-authenticate for sensitive operations.' },
+    ],
+    applicableTo: ['web', 'mobile', 'auth'],
+  },
+  // ── Tampering ─────────────────────────────────────────────────────────────
+  {
+    key: 'sql_injection', category: 'T', name: 'SQL Injection',
+    description: 'Malicious SQL payloads injected through unsanitised input fields allow attackers to read, modify, or delete database contents, or execute OS-level commands.',
+    likelihoodBase: 3, impactBase: 5,
+    getRationale: (f) => `Likelihood is MEDIUM because SQL injection vulnerabilities, while well-understood, still appear in ${f.technologyStack || 'modern'} applications — particularly in dynamic query construction. Impact is CRITICAL because successful exploitation grants full database access including ${f.sensitiveData?.join(', ') || 'sensitive records'}.`,
+    getResidualRationale: () => 'Parameterised queries eliminate the SQL injection vector entirely when applied consistently. A WAF provides an additional detection layer. Residual risk is MINIMAL and primarily relates to second-order injections or stored procedures that bypass standard parameterisation.',
+    recommendations: [
+      { name: 'Parameterised Queries / ORMs', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Use prepared statements or a query-safe ORM for all database interactions. Never concatenate user input into SQL strings.' },
+      { name: 'Input Validation & Allowlisting', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Validate and allowlist all user inputs against expected type, length, and format before processing.' },
+      { name: 'Web Application Firewall (WAF)', type: 'DETECTIVE', effort: 'LOW', effectiveness: 'MEDIUM', description: 'Deploy a WAF with SQLi rule sets to detect and block injection attempts at the network boundary.' },
+    ],
+    applicableTo: ['web', 'api', 'database', 'ecommerce', 'payment', 'healthcare'],
+  },
+  {
+    key: 'xss', category: 'T', name: 'Cross-Site Scripting (XSS)',
+    description: 'Attackers inject malicious scripts into web pages viewed by other users, enabling session theft, credential harvesting, and malware distribution.',
+    likelihoodBase: 3, impactBase: 4,
+    getRationale: (f) => `Likelihood is MEDIUM — XSS remains in the OWASP Top 10 and is present wherever user-controlled data is rendered without proper escaping. Impact is HIGH because attackers can steal session tokens, redirect users to phishing sites, or perform actions as the victim.${f.architectureTypes?.includes('web') ? ' Rich web application UIs have a larger XSS attack surface.' : ''}`,
+    getResidualRationale: () => 'Output encoding eliminates the primary XSS vector. A strict CSP policy prevents inline script execution even if an XSS vulnerability is introduced. Combined, these controls reduce risk to MINIMAL for most attack patterns.',
+    recommendations: [
+      { name: 'Output Encoding', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'HTML-encode all user-supplied data before rendering. Use framework-provided encoding functions — never render raw user input.' },
+      { name: 'Content Security Policy (CSP)', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: "Deploy a strict CSP that prohibits inline scripts and restricts script sources to trusted CDNs. Use nonces for legitimate inline scripts." },
+      { name: 'DOM-based XSS Review', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'MEDIUM', description: 'Conduct targeted code review of JavaScript that assigns to innerHTML, document.write, or location. Replace with textContent or safe DOM APIs.' },
+    ],
+    applicableTo: ['web', 'ecommerce'],
+  },
+  // ── Repudiation ───────────────────────────────────────────────────────────
+  {
+    key: 'audit_gaps', category: 'R', name: 'Insufficient Audit Logging',
+    description: 'Missing or incomplete audit logs prevent detection of malicious activity and make it impossible to attribute actions to specific users, undermining forensic investigations.',
+    likelihoodBase: 3, impactBase: 3,
+    getRationale: (f) => `Likelihood is MEDIUM because audit logging is frequently deprioritised and logging frameworks often miss security-critical events. Impact is MEDIUM because while the threat does not directly compromise data, it conceals other attacks and creates compliance exposure${f.sensitiveData?.includes('Healthcare Records') || f.sensitiveData?.includes('Financial Data') ? ' — particularly significant given the regulated data types in scope.' : '.'}`,
+    getResidualRationale: () => 'A centralised, tamper-evident SIEM with alerting reduces this to LOW. Logs are forwarded in real time so local deletion does not destroy evidence. Residual risk arises from gaps in logging coverage and alert fatigue.',
+    recommendations: [
+      { name: 'Centralised Audit Logging (SIEM)', type: 'DETECTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Forward all authentication, authorisation, and data-access events to a centralised SIEM in real time. Retain for minimum 12 months.' },
+      { name: 'Tamper-Evident Log Storage', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Write logs to an append-only, separately permissioned store. Use WORM storage or cryptographic log chaining to detect deletion.' },
+      { name: 'Alerting on Anomalous Patterns', type: 'DETECTIVE', effort: 'MEDIUM', effectiveness: 'MEDIUM', description: 'Create alerts for failed login spikes, bulk data exports, off-hours admin access, and other suspicious patterns.' },
+    ],
+    applicableTo: ['web', 'api', 'cloud', 'database', 'payment', 'healthcare'],
+  },
+  // ── Information Disclosure ────────────────────────────────────────────────
+  {
+    key: 'data_exposure', category: 'I', name: 'Sensitive Data Exposure',
+    description: 'Personal, financial, or health data stored or transmitted without adequate encryption or access controls is exposed to unauthorised parties through breaches, misconfiguration, or insider threats.',
+    likelihoodBase: 3, impactBase: 5,
+    getRationale: (f) => `Likelihood is MEDIUM because misconfigurations, insufficient access controls, and insecure storage are common. Impact is CRITICAL because exposure of ${f.sensitiveData?.join(', ') || 'sensitive data'} carries severe regulatory penalties${f.sensitiveData?.includes('Healthcare Records') ? ' (Privacy Act, My Health Records Act)' : f.sensitiveData?.includes('Financial Data') ? ' (PCI-DSS, Privacy Act)' : ''} and reputational damage.`,
+    getResidualRationale: () => 'Encryption at rest and in transit ensures data is unreadable without the keys even in the event of a breach. Column-level encryption for PII fields limits blast radius. Residual risk is LOW, primarily from key management weaknesses or insider threats with legitimate key access.',
+    recommendations: [
+      { name: 'Encryption at Rest (AES-256)', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Encrypt all sensitive data at rest using AES-256 or stronger. Apply column-level encryption for PII and financial fields. Store keys in a dedicated KMS.' },
+      { name: 'TLS 1.3 for All Transport', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Require TLS 1.3 with strong cipher suites for all API and web traffic. Disable TLS 1.0/1.1 and weak ciphers.' },
+      { name: 'Data Classification & Minimisation', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'MEDIUM', description: 'Classify all data assets by sensitivity. Apply minimisation — collect and retain only what is necessary. Anonymise or pseudonymise for analytics.' },
+    ],
+    applicableTo: ['web', 'api', 'database', 'mobile', 'cloud', 'payment', 'healthcare'],
+  },
+  {
+    key: 'error_disclosure', category: 'I', name: 'Verbose Error Message Disclosure',
+    description: 'Detailed error messages including stack traces, database queries, or internal paths are exposed to end users, providing attackers with reconnaissance information.',
+    likelihoodBase: 2, impactBase: 3,
+    getRationale: (f) => `Likelihood is LOW-MEDIUM — default framework configurations frequently include verbose error output. Impact is MEDIUM because revealed stack traces, connection strings, and library versions accelerate targeted attack planning.`,
+    getResidualRationale: () => 'After implementing generic error messages in production and routing internal errors to a structured log, this risk drops to MINIMAL. Attackers receive no useful information from error responses.',
+    recommendations: [
+      { name: 'Generic Error Responses', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Return user-friendly generic error messages in production. Log the full error server-side with a correlation ID for debugging.' },
+      { name: 'Error Monitoring (Sentry / Datadog)', type: 'DETECTIVE', effort: 'LOW', effectiveness: 'MEDIUM', description: 'Route all application exceptions to an error tracking service with alerting. Never expose raw exceptions to end users.' },
+    ],
+    applicableTo: ['web', 'api'],
+  },
+  // ── Denial of Service ─────────────────────────────────────────────────────
+  {
+    key: 'ddos', category: 'D', name: 'Distributed Denial-of-Service (DDoS)',
+    description: 'Volumetric or application-layer attacks overwhelm the system with traffic, making it unavailable to legitimate users and causing operational disruption.',
+    likelihoodBase: 3, impactBase: 4,
+    getRationale: (f) => `Likelihood is MEDIUM — DDoS-for-hire services have lowered the barrier for targeted attacks significantly.${f.networkExposure === 'internet' ? ' Internet-facing systems are particularly exposed.' : ''} Impact is HIGH because service unavailability directly affects ${f.userTypes || 'end users'} and can result in SLA breaches and revenue loss.`,
+    getResidualRationale: () => 'Cloud-based DDoS scrubbing absorbs volumetric attacks. Rate limiting protects application-layer resources. Auto-scaling ensures capacity can expand under load. Residual risk is LOW, primarily from sophisticated slow-rate application attacks.',
+    recommendations: [
+      { name: 'Cloud DDoS Scrubbing (Cloudflare / AWS Shield)', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Route traffic through a cloud scrubbing service that absorbs volumetric attacks before they reach origin infrastructure.' },
+      { name: 'API Rate Limiting', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Implement per-IP and per-user rate limits on all public endpoints. Return 429 with Retry-After headers.' },
+      { name: 'Auto-scaling & Load Balancing', type: 'CORRECTIVE', effort: 'MEDIUM', effectiveness: 'MEDIUM', description: 'Configure horizontal auto-scaling groups to respond to traffic spikes. Use load balancers with health checks to redistribute traffic.' },
+    ],
+    applicableTo: ['web', 'api', 'cloud', 'ecommerce'],
+  },
+  // ── Elevation of Privilege ────────────────────────────────────────────────
+  {
+    key: 'idor', category: 'E', name: 'Insecure Direct Object Reference (IDOR)',
+    description: 'Predictable object identifiers in API endpoints allow authenticated users to access or modify resources belonging to other users without authorisation.',
+    likelihoodBase: 3, impactBase: 4,
+    getRationale: (f) => `Likelihood is MEDIUM because IDOR vulnerabilities are prevalent in REST APIs and are often introduced during rapid feature development. Impact is HIGH as exploitation can expose all user records in ${f.architectureTypes?.includes('api') ? 'the API' : 'the system'}, enabling mass data extraction or account modification.`,
+    getResidualRationale: () => 'Enforcing object-level authorisation checks on every API request eliminates the IDOR vector. Automated integration tests that verify cross-user access prevention catch regressions. Residual risk is LOW from complex multi-step authorisation bypasses.',
+    recommendations: [
+      { name: 'Object-Level Authorisation on Every Endpoint', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Verify the requesting user owns or has explicit permission to access the requested resource on every API handler. Never rely solely on authentication.' },
+      { name: 'UUID / Opaque Resource IDs', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'MEDIUM', description: 'Replace sequential integer IDs in URLs with UUIDs or other unpredictable identifiers to reduce enumeration ease.' },
+      { name: 'Authorisation Integration Tests', type: 'DETECTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Add automated tests for each endpoint that verify cross-user access attempts are rejected. Include in CI/CD pipeline.' },
+    ],
+    applicableTo: ['web', 'api', 'mobile'],
+  },
+  {
+    key: 'privilege_escalation', category: 'E', name: 'Privilege Escalation via Role Bypass',
+    description: 'Weaknesses in role-based access control logic allow lower-privileged users to perform admin actions or access resources above their clearance level.',
+    likelihoodBase: 2, impactBase: 5,
+    getRationale: (f) => `Likelihood is LOW-MEDIUM because privilege escalation requires knowledge of the authorisation model and typically involves chaining multiple weaknesses. Impact is CRITICAL because a successful attack grants admin-level access, enabling full system compromise including ${f.sensitiveData?.join(', ') || 'all data'}.`,
+    getResidualRationale: () => 'Server-side enforcement of RBAC with no client-side trust eliminates most escalation paths. Privileged access management and regular entitlement reviews catch accidental over-permissioning. Residual risk is LOW.',
+    recommendations: [
+      { name: 'Server-Side RBAC Enforcement', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Enforce all role checks server-side. Never trust client-supplied role claims. Use a centralised authorisation service or middleware.' },
+      { name: 'Principle of Least Privilege', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Grant each service account and user role only the minimum permissions required. Audit and remove unused permissions quarterly.' },
+      { name: 'Privileged Access Management (PAM)', type: 'PREVENTIVE', effort: 'HIGH', effectiveness: 'HIGH', description: 'Require just-in-time privileged access with approval workflows for admin operations. Log all privileged sessions.' },
+    ],
+    applicableTo: ['web', 'api', 'cloud', 'database'],
+  },
+  // ── OT/ICS specific ────────────────────────────────────────────────────────
+  {
+    key: 'ot_lateral', category: 'T', name: 'IT-to-OT Lateral Movement',
+    description: 'Attackers gain a foothold in the corporate IT network and use it to pivot into OT/ICS networks, potentially manipulating industrial control systems.',
+    likelihoodBase: 3, impactBase: 5,
+    getRationale: (f) => `Likelihood is MEDIUM because IT/OT convergence creates pathways that are difficult to fully segment. Impact is CRITICAL for an OT environment because successful compromise of industrial control systems can result in physical damage, safety incidents, and prolonged operational shutdown.`,
+    getResidualRationale: () => 'Network segmentation with strict jump-server access reduces lateral movement significantly. After implementing a DMZ between IT and OT with application-layer inspection, residual risk drops to MEDIUM — sophisticated nation-state actors can still bridge well-designed segmentation.',
+    recommendations: [
+      { name: 'IT/OT Network Segmentation & DMZ', type: 'PREVENTIVE', effort: 'HIGH', effectiveness: 'HIGH', description: 'Place a demilitarised zone between IT and OT networks with stateful inspection firewalls. Allow only necessary protocols through the DMZ.' },
+      { name: 'Unidirectional Security Gateways (Data Diodes)', type: 'PREVENTIVE', effort: 'HIGH', effectiveness: 'HIGH', description: 'Deploy hardware data diodes for connections from OT to IT where bidirectional communication is not required.' },
+      { name: 'OT Asset Inventory & Patch Management', type: 'PREVENTIVE', effort: 'HIGH', effectiveness: 'MEDIUM', description: 'Maintain a complete inventory of OT assets. Apply vendor security patches as feasible; document risk-acceptance for unpatchable legacy devices.' },
+    ],
+    applicableTo: ['iot'],
+  },
+  {
+    key: 'supply_chain', category: 'S', name: 'Third-Party / Supply Chain Compromise',
+    description: 'A trusted third-party vendor, library, or cloud service is compromised, providing attackers with a trusted path into the target environment.',
+    likelihoodBase: 2, impactBase: 5,
+    getRationale: (f) => `Likelihood is LOW-MEDIUM because supply chain attacks (e.g., SolarWinds, Log4Shell, XZ Utils) have increased significantly in frequency. Impact is CRITICAL because the attack leverages existing trust relationships, bypassing perimeter defences entirely.${f.externalDependencies ? ` External dependencies include: ${f.externalDependencies}.` : ''}`,
+    getResidualRationale: () => 'Software composition analysis (SCA) reduces the library risk vector. Vendor security assessments and strict change-control processes reduce integration-level risk. Residual risk remains MEDIUM as some supply chain attacks are not detectable until post-compromise.',
+    recommendations: [
+      { name: 'Software Composition Analysis (SCA)', type: 'DETECTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Integrate SCA tooling (e.g., Snyk, OWASP Dependency-Check) in CI/CD to detect known-vulnerable or malicious third-party libraries.' },
+      { name: 'Third-Party Vendor Security Assessment', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'MEDIUM', description: 'Require critical vendors to complete security questionnaires (CAIQ, SIG) annually. Review SOC 2 reports and penetration test results.' },
+      { name: 'Zero-Trust for Third-Party Integrations', type: 'PREVENTIVE', effort: 'MEDIUM', effectiveness: 'HIGH', description: 'Treat all third-party service interactions as untrusted. Validate responses, restrict network access to minimum required, and monitor for anomalous behaviour.' },
+    ],
+    applicableTo: ['cloud', 'api', 'payment', 'healthcare'],
+  },
+];
+
+function riskLevelFromScore(score) {
+  if (score >= 20) return 'CRITICAL';
+  if (score >= 15) return 'HIGH';
+  if (score >= 10) return 'MEDIUM';
+  if (score >= 5)  return 'LOW';
+  return 'MINIMAL';
+}
+
+/**
+ * Enhanced analysis that uses form data and canvas elements to produce a
+ * detailed threat table with rationale, recommendations, and residual risk.
+ */
+export async function analyzeWithContext(project, formData = {}, canvasElements = [], onProgress) {
+  const { id: projectId, name, description, tags } = project;
+  const combined = `${name} ${description} ${tags?.join(' ')} ${formData.systemDescription || ''} ${formData.technologyStack || ''}`.toLowerCase();
+
+  try {
+    onProgress?.({ step: 1, total: 4, message: 'Analysing system characteristics and attack surface...' });
+    await simulateDelay(900);
+
+    // Determine which threats are applicable
+    const characteristics = analyzeProjectCharacteristics(name, description, tags);
+    // Merge with form-level architecture types
+    const archTypes = (formData.architectureTypes || []).map(a => a.toLowerCase().replace(/[^a-z]/g, ''));
+    const allChars = [...new Set([...characteristics, ...archTypes])];
+
+    onProgress?.({ step: 2, total: 4, message: 'Selecting and scoring applicable threat scenarios...' });
+    await simulateDelay(1200);
+
+    // Filter relevant threats from DB
+    const applicable = DETAILED_THREAT_DB.filter(t =>
+      t.applicableTo.some(a => allChars.includes(a) || combined.includes(a))
+    );
+
+    // Supplement with generic threats if few found
+    const pool = applicable.length >= 5 ? applicable : DETAILED_THREAT_DB.slice(0, 8);
+
+    onProgress?.({ step: 3, total: 4, message: 'Generating risk rationale and control recommendations...' });
+    await simulateDelay(1100);
+
+    // Identify component names from canvas
+    const componentNames = canvasElements
+      .filter(e => e.type !== 'trust_boundary')
+      .map(e => e.label || ELEMENT_DEFS_FALLBACK[e.type] || e.type)
+      .filter(Boolean);
+
+    // Build detailed threat analysis rows
+    const threatRows = pool.map(tDef => {
+      // Slightly vary likelihood/impact based on form data
+      const exposureMod = formData.networkExposure === 'internet' ? 1 : formData.networkExposure === 'internal' ? -1 : 0;
+      const likelihood  = Math.min(5, Math.max(1, tDef.likelihoodBase + exposureMod + (Math.random() > 0.5 ? 1 : 0)));
+      const impact      = Math.min(5, Math.max(1, tDef.impactBase));
+      const riskScore   = likelihood * impact;
+      const riskLevel   = riskLevelFromScore(riskScore);
+
+      const residualFactor = RESIDUAL_FACTOR[tDef.category] ?? 0.25;
+      const residualRiskScore  = Math.max(1, Math.round(riskScore * residualFactor));
+      const residualRiskLevel  = riskLevelFromScore(residualRiskScore);
+
+      // Pick relevant affected components from canvas
+      const affected = componentNames.length > 0
+        ? componentNames.slice(0, Math.min(3, componentNames.length))
+        : ['System'];
+
+      return {
+        id: uuidv4(),
+        projectId,
+        name: tDef.name,
+        strideCategory: tDef.category,
+        description: tDef.description,
+        affectedComponents: affected,
+        likelihood,
+        impact,
+        riskScore,
+        riskLevel,
+        rationale: tDef.getRationale(formData),
+        recommendations: tDef.recommendations,
+        residualRiskScore,
+        residualRiskLevel,
+        residualRationale: tDef.getResidualRationale(formData),
+        attackVector: 'Network',
+        aiGenerated: true,
+        createdAt: new Date().toISOString(),
+      };
+    });
+
+    // Sort: critical first
+    threatRows.sort((a, b) => b.riskScore - a.riskScore);
+
+    onProgress?.({ step: 4, total: 4, message: 'Compiling threat register and risk summary...' });
+    await simulateDelay(600);
+
+    // Also generate standard assets/controls/dataFlows for project import
+    const assets    = generateAssetsForProject(projectId, allChars);
+    const controls  = generateControlsForProject(projectId, threatRows, allChars);
+    const dataFlows = generateDataFlowsForProject(projectId, assets, allChars);
+
+    return {
+      success: true,
+      threatRows,
+      threats: threatRows, // compatible with importAIResults
+      controls,
+      assets,
+      dataFlows,
+      summary: {
+        characteristics: allChars,
+        threatCount: threatRows.length,
+        criticalThreats: threatRows.filter(t => t.riskLevel === 'CRITICAL').length,
+        highThreats: threatRows.filter(t => t.riskLevel === 'HIGH').length,
+        controlCount: controls.length,
+        assetCount: assets.length,
+        riskScore: calculateOverallRiskScore(threatRows),
+      },
+    };
+  } catch (err) {
+    console.error('analyzeWithContext error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// Fallback label map for canvas element types
+const ELEMENT_DEFS_FALLBACK = {
+  actor: 'Actor', process: 'Process', data_store: 'Data Store', external: 'External System',
+};

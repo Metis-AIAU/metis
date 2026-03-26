@@ -61,7 +61,7 @@ export default function Login() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg mb-4">
             <ShieldAlert className="w-9 h-9 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">ThreatModeler</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Metis</h1>
           <p className="text-sm text-gray-500 mt-1">OT Cybersecurity Compliance Tracker</p>
         </div>
 

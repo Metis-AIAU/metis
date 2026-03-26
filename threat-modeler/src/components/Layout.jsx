@@ -81,7 +81,7 @@ export default function Layout({ children }) {
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <h1 className="text-lg font-bold text-gray-900">ThreatModeler</h1>
+                  <h1 className="text-lg font-bold text-gray-900">Metis</h1>
                   <p className="text-xs text-gray-500">Security Analysis</p>
                 </motion.div>
               )}

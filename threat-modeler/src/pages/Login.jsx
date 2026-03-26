@@ -4,17 +4,34 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldAlert, Eye, EyeOff, UserPlus, LogIn, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+// Map Firebase error codes to friendly messages
+function friendlyError(err) {
+  const code = err?.code || '';
+  if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential')
+    return 'Invalid email or password.';
+  if (code === 'auth/email-already-in-use')
+    return 'An account with this email already exists.';
+  if (code === 'auth/weak-password')
+    return 'Password must be at least 6 characters.';
+  if (code === 'auth/invalid-email')
+    return 'Please enter a valid email address.';
+  if (code === 'auth/too-many-requests')
+    return 'Too many attempts. Please try again later.';
+  return err?.message || 'Something went wrong. Please try again.';
+}
+
 export default function Login() {
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [mode, setMode]                     = useState('login'); // 'login' | 'register'
+  const [email, setEmail]                   = useState('');
+  const [displayName, setDisplayName]       = useState('');
+  const [password, setPassword]             = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword]     = useState(false);
+  const [error, setError]                   = useState('');
+  const [isSubmitting, setIsSubmitting]     = useState(false);
 
   const isRegister = mode === 'register';
 
@@ -37,13 +54,13 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       if (isRegister) {
-        await register(username.trim(), password);
+        await register(email.trim(), password, displayName.trim());
       } else {
-        await login(username.trim(), password);
+        await login(email.trim(), password);
       }
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(friendlyError(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -90,19 +107,44 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username */}
+
+            {/* Display name (register only) */}
+            <AnimatePresence>
+              {isRegister && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    placeholder="How should we call you?"
+                    autoComplete="name"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Username
+                Email
               </label>
               <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 required
                 autoFocus
-                autoComplete="username"
+                autoComplete="email"
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
@@ -117,7 +159,7 @@ export default function Login() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder={isRegister ? 'At least 8 characters' : 'Enter your password'}
+                  placeholder={isRegister ? 'At least 6 characters' : 'Enter your password'}
                   required
                   autoComplete={isRegister ? 'new-password' : 'current-password'}
                   className="w-full px-4 py-2.5 pr-11 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
@@ -204,7 +246,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-4">
-          OT Compliance Tracker · AESCSF · SOCI · ASD Fortify · Essential Eight
+          Metis · AESCSF · SOCI · ASD Fortify · Essential Eight
         </p>
       </motion.div>
     </div>

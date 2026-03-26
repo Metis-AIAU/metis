@@ -1,80 +1,77 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { apiGet, apiPost, setToken, clearToken, NetworkError } from '../services/api';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const AuthContext = createContext(null);
 
-const AUTH_TOKEN_KEY = 'ot_auth_token';
+/** Map a Firebase user object to our app's user shape */
+function mapFirebaseUser(fbUser) {
+  return {
+    id:       fbUser.uid,
+    email:    fbUser.email,
+    username: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+  };
+}
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);          // { id, username }
-  const [isLoading, setIsLoading] = useState(true); // true during initial token validation
-  const [isOffline, setIsOffline] = useState(false);
+  const [user, setUser]         = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Validate stored token on mount
+  // Subscribe to Firebase auth state changes (persists across page reloads)
   useEffect(() => {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
-    if (!token) {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      setUser(fbUser ? mapFirebaseUser(fbUser) : null);
       setIsLoading(false);
-      return;
-    }
-
-    apiGet('/api/me')
-      .then(userData => {
-        setUser({ id: userData.id, username: userData.username });
-        setIsOffline(false);
-      })
-      .catch(err => {
-        if (err instanceof NetworkError) {
-          // Server unreachable — treat as offline but still "authenticated" so
-          // the app loads with localStorage data rather than redirecting to login.
-          setUser({ id: null, username: '(offline)' });
-          setIsOffline(true);
-        } else {
-          // 401 or other error — token is invalid, clear it
-          clearToken();
-          setUser(null);
-        }
-      })
-      .finally(() => setIsLoading(false));
+    });
+    return unsubscribe; // cleanup listener on unmount
   }, []);
 
-  // Listen for token-expired events dispatched by api.js on 401 responses
-  useEffect(() => {
-    function handleExpired() {
-      clearToken();
-      setUser(null);
-    }
-    window.addEventListener('auth:expired', handleExpired);
-    return () => window.removeEventListener('auth:expired', handleExpired);
+  /** Sign in with email + password */
+  const login = useCallback(async (email, password) => {
+    const { user: fbUser } = await signInWithEmailAndPassword(auth, email, password);
+    // Update last-login timestamp in Firestore (non-blocking)
+    setDoc(doc(db, 'users', fbUser.uid), { lastLogin: serverTimestamp() }, { merge: true })
+      .catch(() => {});
+    return mapFirebaseUser(fbUser);
   }, []);
 
-  const login = useCallback(async (username, password) => {
-    const { token, user: userData } = await apiPost('/api/auth/login', { username, password });
-    setToken(token);
-    setUser({ id: userData.id, username: userData.username });
-    setIsOffline(false);
-    return userData;
+  /** Create a new account with email, password, and an optional display name */
+  const register = useCallback(async (email, password, displayName) => {
+    const { user: fbUser } = await createUserWithEmailAndPassword(auth, email, password);
+
+    const username = (displayName && displayName.trim()) || email.split('@')[0];
+
+    // Set display name on the Firebase Auth profile
+    await updateProfile(fbUser, { displayName: username });
+
+    // Create the user profile document in Firestore
+    await setDoc(doc(db, 'users', fbUser.uid), {
+      email,
+      username,
+      createdAt:  serverTimestamp(),
+      lastLogin:  serverTimestamp(),
+    });
+
+    return mapFirebaseUser({ ...fbUser, displayName: username });
   }, []);
 
-  const register = useCallback(async (username, password) => {
-    const { token, user: userData } = await apiPost('/api/auth/register', { username, password });
-    setToken(token);
-    setUser({ id: userData.id, username: userData.username });
-    setIsOffline(false);
-    return userData;
-  }, []);
-
-  const logout = useCallback(() => {
-    clearToken();
-    setUser(null);
-    setIsOffline(false);
-    // Note: localStorage compliance state is intentionally kept as offline backup
+  /** Sign out */
+  const logout = useCallback(async () => {
+    await signOut(auth);
+    // AuthStateChanged listener will clear user state automatically
   }, []);
 
   const value = {
     user,
     isLoading,
-    isOffline,
+    isOffline:       false,   // Firebase SDK handles offline transparently
     isAuthenticated: !!user,
     login,
     register,

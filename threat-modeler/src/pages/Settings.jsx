@@ -11,13 +11,44 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
+  Shield,
+  Eye,
+  EyeOff,
+  Server,
+  Key,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
+import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
 
 export default function Settings() {
   const { state, resetToSampleData } = useThreatContext();
+  const { user, isAuthenticated } = useAuth();
+  const { isTeamOwner, isTeamAdmin, team } = useTeam();
   const [exportStatus, setExportStatus] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
+  const [showSecrets, setShowSecrets] = useState(false);
+
+  const isAdmin = isTeamOwner || isTeamAdmin || !team;
+
+  const firebaseConfig = {
+    apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            || '',
+    authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN        || '',
+    projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         || '',
+    storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET     || '',
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+    appId:             import.meta.env.VITE_FIREBASE_APP_ID             || '',
+    measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID    || '',
+  };
+
+  const maskValue = (value) => {
+    if (!value) return '—';
+    if (showSecrets) return value;
+    if (value.length <= 8) return '••••••••';
+    return value.slice(0, 4) + '••••' + value.slice(-4);
+  };
 
   const handleExport = () => {
     try {
@@ -263,6 +294,105 @@ export default function Settings() {
             </div>
           </div>
         </motion.div>
+
+        {/* Firebase & Firestore Configuration */}
+        {isAuthenticated && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="card lg:col-span-2"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-amber-500" />
+                <h2 className="font-semibold text-gray-900">Firebase & Firestore Configuration</h2>
+                {isAdmin && (
+                  <span className="badge text-xs" style={{ backgroundColor: '#fef3c7', color: '#a16207' }}>
+                    <Lock className="w-3 h-3 mr-1" />
+                    Admin
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowSecrets(!showSecrets)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                {showSecrets ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showSecrets ? 'Hide Values' : 'Reveal Values'}
+              </button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <Shield className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800">
+                    Sensitive configuration — visible to administrators only
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">
+                    These values are loaded from environment variables and control the connection to
+                    your Firebase project. Changes must be made in the <code className="bg-amber-100 px-1 rounded">.env</code> file
+                    and require a server restart.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              {[
+                { label: 'Project ID',          key: 'projectId',         icon: Globe, sensitive: false },
+                { label: 'Auth Domain',          key: 'authDomain',       icon: Globe, sensitive: false },
+                { label: 'API Key',              key: 'apiKey',           icon: Key,   sensitive: true },
+                { label: 'App ID',               key: 'appId',           icon: Key,   sensitive: true },
+                { label: 'Storage Bucket',       key: 'storageBucket',   icon: Database, sensitive: false },
+                { label: 'Messaging Sender ID',  key: 'messagingSenderId', icon: Server, sensitive: true },
+                { label: 'Measurement ID',       key: 'measurementId',   icon: Server, sensitive: false },
+              ].map(({ label, key, icon: Icon, sensitive }) => (
+                <div
+                  key={key}
+                  className="flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+                    <p className={`text-sm font-mono mt-0.5 ${firebaseConfig[key] ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {sensitive ? maskValue(firebaseConfig[key]) : (firebaseConfig[key] || '—')}
+                    </p>
+                  </div>
+                  {sensitive && (
+                    <Lock className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span>
+                    Firestore Path: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                      users/{user?.id ? user.id.slice(0, 8) + '...' : '—'}/data/threatData
+                    </code>
+                  </span>
+                  {team && (
+                    <span>
+                      Team Doc: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                        teams/{team.id.slice(0, 8)}...
+                      </code>
+                    </span>
+                  )}
+                </div>
+                <span className="flex items-center gap-1.5 text-xs text-green-600">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  Connected
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* About */}
         <motion.div

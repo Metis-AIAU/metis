@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThreatProvider } from './context/ThreatContext';
 import { ComplianceProvider } from './context/ComplianceContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { TeamProvider } from './context/TeamContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -79,13 +80,15 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <ThreatProvider>
-        <ComplianceProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </ComplianceProvider>
-      </ThreatProvider>
+      <TeamProvider>
+        <ThreatProvider>
+          <ComplianceProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </ComplianceProvider>
+        </ThreatProvider>
+      </TeamProvider>
     </AuthProvider>
   );
 }

@@ -21,7 +21,16 @@ import ASDFortifyPage from './pages/compliance/ASDFortifyPage';
 import EssentialEightPage from './pages/compliance/EssentialEightPage';
 import GapAnalysis from './pages/compliance/GapAnalysis';
 import ComplianceReport from './pages/compliance/ComplianceReport';
+import { useThreatContext } from './context/ThreatContext';
 import './index.css';
+
+/** Redirects /workspace to the current project's workspace, or project list. */
+function WorkspaceRedirect() {
+  const { state } = useThreatContext();
+  const projectId = state.currentProject?.id || state.projects[0]?.id;
+  if (projectId) return <Navigate to={`/projects/${projectId}/workspace`} replace />;
+  return <Navigate to="/projects" replace />;
+}
 
 /** Redirects to /login if the user is not authenticated. */
 function ProtectedRoute({ children }) {
@@ -54,6 +63,7 @@ function AppRoutes() {
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/projects/:projectId" element={<ProjectDetail />} />
                 <Route path="/projects/:projectId/workspace" element={<ThreatModelingWorkspace />} />
+                <Route path="/workspace" element={<WorkspaceRedirect />} />
                 <Route path="/threats" element={<Threats />} />
                 <Route path="/threats/:threatId" element={<Threats />} />
                 <Route path="/controls" element={<Controls />} />

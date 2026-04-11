@@ -1,13 +1,18 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
 // Initialise the database (creates tables on first run)
 require('./db');
 
-const authRoutes = require('./routes/auth');
-const stateRoutes = require('./routes/state');
-const meRoutes = require('./routes/me');
+const authRoutes       = require('./routes/auth');
+const stateRoutes      = require('./routes/state');
+const meRoutes         = require('./routes/me');
+const analyzeRoutes    = require('./routes/analyze');
+const confluenceRoutes = require('./routes/confluence');
+const advancedRoutes   = require('./routes/advanced');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,9 +28,12 @@ app.use(cors({
 app.use(express.json({ limit: '2mb' }));
 
 // ── Routes ────────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
-app.use('/api/state', stateRoutes);
-app.use('/api/me', meRoutes);
+app.use('/api/auth',       authRoutes);
+app.use('/api/state',      stateRoutes);
+app.use('/api/me',         meRoutes);
+app.use('/api/analyze',    analyzeRoutes);
+app.use('/api/confluence', confluenceRoutes);
+app.use('/api/advanced',  advancedRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -36,6 +44,16 @@ app.get('/api/health', (req, res) => {
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
+
+// ── Static frontend (production) ──────────────────────────────────────────
+const distPath = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  // SPA fallback — serve index.html for any non-API route
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 // ── Start ─────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

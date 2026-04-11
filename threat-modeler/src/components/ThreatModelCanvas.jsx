@@ -422,8 +422,19 @@ function renderShape(el, sw, isSelected) {
   }
 }
 
+// ─── Anchor point positions (top, right, bottom, left) ───────────────────────
+function getAnchorPoints(el) {
+  const { x, y, w, h } = el;
+  return [
+    { id: 'top',    cx: x + w / 2, cy: y },
+    { id: 'right',  cx: x + w,     cy: y + h / 2 },
+    { id: 'bottom', cx: x + w / 2, cy: y + h },
+    { id: 'left',   cx: x,         cy: y + h / 2 },
+  ];
+}
+
 // ─── Shape component (interaction wrapper) ────────────────────────────────────
-function Shape({ el, isSelected, isConnecting, tool, onMouseDown, onDblClick, onConnectClick, editingId, editLabel, onEditChange, onEditCommit }) {
+function Shape({ el, isSelected, isConnecting, isDragTarget, tool, isDragging, onMouseDown, onDblClick, onConnectClick, onAnchorDown, onMouseUp, editingId, editLabel, onEditChange, onEditCommit }) {
   const def = ELEMENT_DEFS[el.type] || { color: '#6b7280', label: el.type };
   const isZone = ZONE_TYPES.has(el.type);
   const cursor = tool === 'connect' ? 'crosshair' : 'move';
@@ -434,6 +445,8 @@ function Shape({ el, isSelected, isConnecting, tool, onMouseDown, onDblClick, on
   const handleDown  = (e) => { e.stopPropagation(); onMouseDown(e, el.id); };
   const handleDbl   = (e) => { e.stopPropagation(); onDblClick(e, el.id); };
   const handleClick = (e) => { e.stopPropagation(); if (tool === 'connect') onConnectClick(el.id); };
+  // DO NOT stopPropagation — onSVGMouseUp must always fire to clear dragging
+  const handleUp    = () => { onMouseUp(el.id); };
 
   // Label position
   const isStickFigure = ['user','admin','attacker'].includes(el.type);
@@ -456,29 +469,60 @@ function Shape({ el, isSelected, isConnecting, tool, onMouseDown, onDblClick, on
     </foreignObject>
   ) : null;
 
+  // Show anchors via CSS hover (class-based, no React state) — hide while dragging elements
+  const showAnchorsClass = !isZone && !isDragging ? 'shape-group' : '';
+  const anchors = getAnchorPoints(el);
+
   return (
-    <g onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick} style={{ cursor }}>
+    <g className={showAnchorsClass} onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick}
+       onMouseUp={handleUp} style={{ cursor }}>
       {/* Selection box */}
       {isSelected && !isZone && (
         <rect x={x-5} y={y-5} width={w+10} height={h+10} rx={6}
-          fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="5,3" />
+          fill="none" stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="5,3" opacity={0.8} />
       )}
-      {/* Connect hover highlight */}
-      {isConnecting && (
+      {/* Connect hover highlight / drag target highlight */}
+      {(isConnecting || isDragTarget) && (
         <rect x={x-8} y={y-8} width={w+16} height={h+16} rx={8}
-          fill="#ede9fe" opacity={0.4} />
+          fill={isDragTarget ? '#10b981' : '#8b5cf6'} opacity={0.12} />
       )}
       {/* Shape body */}
       {renderShape(el, sw, isSelected)}
       {/* Label */}
       {editingId !== el.id && (
-        <text x={labelX} y={labelY} textAnchor={labelAnchor} fontSize={isZone ? 11 : 12}
-          fill={isZone ? def.color : '#1f2937'} fontWeight={isZone ? 700 : 600}
+        <text x={labelX} y={labelY} textAnchor={labelAnchor}
+          fontSize={isZone ? 11 : 11}
+          fill={isZone ? def.color : '#374151'}
+          fontWeight={isZone ? 700 : 600}
+          fontFamily="ui-sans-serif, system-ui, -apple-system, sans-serif"
+          letterSpacing={isZone ? '0.02em' : '0'}
           style={{ pointerEvents: 'none', userSelect: 'none' }}>
           {el.label}
         </text>
       )}
       {labelEl}
+      {/* Connection anchor points — visible via CSS :hover on .shape-group */}
+      {!isZone && (
+        <g className="shape-anchors" style={{ pointerEvents: isDragging ? 'none' : 'auto' }}>
+          {anchors.map((a) => (
+            <g key={a.id}>
+              {/* Hit area — sized to not overlap element body */}
+              <circle cx={a.cx} cy={a.cy} r={7} fill="transparent"
+                style={{ cursor: 'crosshair' }}
+                onMouseDown={(e) => { e.stopPropagation(); onAnchorDown(e, el.id, a.id); }}
+              />
+              {/* Visible anchor dot */}
+              <circle cx={a.cx} cy={a.cy} r={4.5} fill="white" stroke="#8b5cf6" strokeWidth={1.5}
+                style={{ pointerEvents: 'none' }}
+              />
+              {/* Inner dot */}
+              <circle cx={a.cx} cy={a.cy} r={1.5} fill="#8b5cf6"
+                style={{ pointerEvents: 'none' }}
+              />
+            </g>
+          ))}
+        </g>
+      )}
     </g>
   );
 }
@@ -612,31 +656,31 @@ function ConnectionPanel({ conn, position, svgRect, onUpdate, onDelete, onClose 
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Connection</span>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-0.5 rounded"><X className="w-3.5 h-3.5" /></button>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[9px] font-mono font-semibold text-gray-400 uppercase tracking-widest">Connection</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-0.5 rounded transition-colors"><X className="w-3.5 h-3.5" /></button>
       </div>
 
       {/* Label */}
-      <div className="mb-2">
-        <label className="text-xs text-gray-500 block mb-1">Label</label>
+      <div className="mb-3">
+        <label className="text-[9px] font-mono text-gray-400 block mb-1.5 uppercase tracking-widest">Label</label>
         <input
-          className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-300"
+          className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-200 bg-white text-gray-800 placeholder-gray-300"
           value={conn.label || ''}
           onChange={(e) => onUpdate({ label: e.target.value })}
-          placeholder="e.g. Login request"
+          placeholder="e.g. login request"
         />
       </div>
 
       {/* Protocol */}
-      <div className="mb-2">
-        <label className="text-xs text-gray-500 block mb-1">Protocol</label>
+      <div className="mb-3">
+        <label className="text-[9px] font-mono text-gray-400 block mb-1.5 uppercase tracking-widest">Protocol</label>
         <div className="flex flex-wrap gap-1">
           {Object.entries(PROTOCOLS).map(([key, proto]) => (
             <button
               key={key}
               onClick={() => onUpdate({ protocol: key })}
-              className={`px-2 py-0.5 text-xs rounded-full font-medium border transition-all ${
+              className={`px-2 py-0.5 text-[10px] rounded-full font-mono font-medium border transition-all ${
                 (conn.protocol || 'Custom') === key
                   ? 'text-white border-transparent shadow'
                   : 'text-gray-500 border-gray-200 hover:border-gray-300 bg-white'
@@ -649,7 +693,7 @@ function ConnectionPanel({ conn, position, svgRect, onUpdate, onDelete, onClose 
 
       {/* Direction */}
       <div className="mb-3">
-        <label className="text-xs text-gray-500 block mb-1">Direction</label>
+        <label className="text-[9px] font-mono text-gray-400 block mb-1.5 uppercase tracking-widest">Direction</label>
         <div className="flex gap-1">
           {[
             { val: 'forward',       label: '→',  title: 'Forward' },
@@ -670,7 +714,7 @@ function ConnectionPanel({ conn, position, svgRect, onUpdate, onDelete, onClose 
 
       <button
         onClick={onDelete}
-        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-mono text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors tracking-wider uppercase"
       >
         <Trash2 className="w-3 h-3" />Delete connection
       </button>
@@ -687,14 +731,18 @@ export default function ThreatModelCanvas({ value, onChange }) {
   const [tool,       setTool]       = useState('select');
   const [dragging,   setDragging]   = useState(null);
   const [connecting, setConnecting] = useState(null);
-  const [mousePos,   setMousePos]   = useState({ x: 0, y: 0 });
+  const [anchorDrag, setAnchorDrag] = useState(null); // { fromId, anchorId } when dragging from an anchor
   const [selected,   setSelected]   = useState(null);
   const [editing,    setEditing]    = useState(null);
   const [mode,       setMode]       = useState('canvas');
   const [uploadedImage, setUploadedImage] = useState(value?.uploadedImage || null);
   const [collapsed,  setCollapsed]  = useState({});
-  const [svgRect,    setSvgRect]    = useState(null);
+  const [,    setSvgRect]    = useState(null);
   const fileRef = useRef(null);
+
+  // Mouse position as ref (no re-renders) + state only for live-line drawing
+  const mousePosRef = useRef({ x: 0, y: 0 });
+  const [lineEnd, setLineEnd] = useState({ x: 0, y: 0 }); // only updated when drawing a live line
 
   const emit = useCallback((els, conns, img) => {
     onChange?.({ elements: els, connections: conns, uploadedImage: img ?? uploadedImage });
@@ -730,6 +778,8 @@ export default function ThreatModelCanvas({ value, onChange }) {
   // ── Element mouse events ───────────────────────────────────────────────────
   const onElementMouseDown = (e, id) => {
     if (tool !== 'select') return;
+    if (anchorDrag) return;
+    e.preventDefault();
     setSelected(id);
     const el = elements.find(el => el.id === id);
     if (!el) return;
@@ -737,18 +787,80 @@ export default function ThreatModelCanvas({ value, onChange }) {
     setDragging({ id, ox: x - el.x, oy: y - el.y });
   };
 
-  const onSVGMouseMove = (e) => {
-    const pos = svgCoords(e);
-    setMousePos(pos);
-    if (!dragging) return;
-    const newEls = elements.map(el =>
-      el.id === dragging.id ? { ...el, x: pos.x - dragging.ox, y: pos.y - dragging.oy } : el
-    );
-    emit(newEls, connections);
+  // ── Window-level drag handlers (keep drag alive when cursor leaves SVG) ──────
+  // elementsRef / connectionsRef hold the latest values without capturing stale closures
+  const elementsRef    = useRef(elements);
+  const connectionsRef = useRef(connections);
+  const draggingRef    = useRef(dragging);
+  const anchorDragRef  = useRef(anchorDrag);
+  const connectingRef  = useRef(connecting);
+  elementsRef.current    = elements;
+  connectionsRef.current = connections;
+  draggingRef.current    = dragging;
+  anchorDragRef.current  = anchorDrag;
+  connectingRef.current  = connecting;
+
+  useEffect(() => {
+    const isActive = () => draggingRef.current || anchorDragRef.current;
+
+    const onWindowMove = (e) => {
+      if (!isActive()) return;
+      const pos = svgCoords(e);
+      mousePosRef.current = pos;
+
+      if (anchorDragRef.current || connectingRef.current) {
+        setLineEnd(pos);
+        return;
+      }
+      const d = draggingRef.current;
+      if (!d) return;
+      const newEls = elementsRef.current.map(el =>
+        el.id === d.id ? { ...el, x: pos.x - d.ox, y: pos.y - d.oy } : el
+      );
+      emit(newEls, connectionsRef.current);
+    };
+
+    const onWindowUp = () => {
+      if (!isActive()) return;
+      setDragging(null);
+      draggingRef.current = null;
+      if (anchorDragRef.current) {
+        setAnchorDrag(null);
+        setConnecting(null);
+      }
+    };
+
+    window.addEventListener('mousemove', onWindowMove);
+    window.addEventListener('mouseup',   onWindowUp);
+    return () => {
+      window.removeEventListener('mousemove', onWindowMove);
+      window.removeEventListener('mouseup',   onWindowUp);
+    };
+  // emit is stable (useCallback); svgCoords reads svgRef directly
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emit]);
+
+  const onSVGMouseMove = (_e) => {
+    // When NOT dragging, still update live-line cursor for connect mode
+    if (!dragging && !anchorDrag) {
+      if (connecting) {
+        const pos = svgCoords(_e);
+        mousePosRef.current = pos;
+        setLineEnd(pos);
+      }
+    }
+    // Drag is handled by window listener above
   };
 
-  const onSVGMouseUp  = () => setDragging(null);
-  const onSVGClick    = () => { if (tool === 'select') setSelected(null); if (tool === 'connect') setConnecting(null); };
+  // onSVGMouseUp kept as fallback (fires when released inside SVG)
+  const onSVGMouseUp = () => {
+    setDragging(null);
+    if (anchorDrag) {
+      setAnchorDrag(null);
+      setConnecting(null);
+    }
+  };
+  const onSVGClick = () => { if (tool === 'select') setSelected(null); if (tool === 'connect') setConnecting(null); };
 
   // ── Connect mode ────────────────────────────────────────────────────────────
   const onConnectClick = (id) => {
@@ -772,6 +884,45 @@ export default function ThreatModelCanvas({ value, onChange }) {
       setTool('select');
     }
   };
+
+  // ── Anchor drag-to-connect ───────────────────────────────────────────────────
+  const onAnchorDown = (e, elementId, anchorId) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setAnchorDrag({ fromId: elementId, anchorId });
+    setConnecting(elementId);
+    setDragging(null);
+    setSelected(null);
+  };
+
+  // Called when mouse is released on any element — DO NOT stopPropagation here
+  // so that onSVGMouseUp always fires to clear dragging state
+  const onElementMouseUp = (id) => {
+    if (anchorDrag && anchorDrag.fromId !== id) {
+      // Complete the connection
+      const exists = connections.some(c =>
+        (c.fromId === anchorDrag.fromId && c.toId === id) ||
+        (c.fromId === id && c.toId === anchorDrag.fromId)
+      );
+      if (!exists) {
+        const newConns = [...connections, {
+          id: uuidv4(), fromId: anchorDrag.fromId, toId: id,
+          label: '', protocol: 'HTTPS', direction: 'forward',
+        }];
+        emit(elements, newConns);
+        setSelected(newConns[newConns.length - 1].id);
+      }
+      setAnchorDrag(null);
+      setConnecting(null);
+    }
+  };
+
+  // Compute which element is under the cursor during anchor drag (for highlight)
+  const anchorDragTarget = anchorDrag ? elements.find(el =>
+    el.id !== anchorDrag.fromId &&
+    lineEnd.x >= el.x && lineEnd.x <= el.x + el.w &&
+    lineEnd.y >= el.y && lineEnd.y <= el.y + el.h
+  )?.id ?? null : null;
 
   // ── Label editing ───────────────────────────────────────────────────────────
   const onDblClick = (e, id) => {
@@ -798,7 +949,7 @@ export default function ThreatModelCanvas({ value, onChange }) {
   useEffect(() => {
     const onKey = (e) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !editing) deleteSelected();
-      if (e.key === 'Escape') { setConnecting(null); setEditing(null); }
+      if (e.key === 'Escape') { setConnecting(null); setAnchorDrag(null); setEditing(null); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -844,39 +995,39 @@ export default function ThreatModelCanvas({ value, onChange }) {
   };
 
   return (
-    <div className="flex flex-col h-full" ref={wrapRef}>
+    <div className="flex flex-col h-full bg-white" ref={wrapRef}>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-200 flex-shrink-0">
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-1">
           <button title="Select / Move (S)"
             onClick={() => { setTool('select'); setConnecting(null); }}
-            className={`p-1.5 rounded-md transition-colors ${tool === 'select' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`p-1.5 rounded-md transition-all ${tool === 'select' ? 'bg-white shadow text-blue-600 ring-1 ring-blue-200' : 'text-gray-500 hover:text-gray-700'}`}
           ><MousePointer2 className="w-4 h-4" /></button>
           <button title="Draw Connection (C)"
             onClick={() => setTool('connect')}
-            className={`p-1.5 rounded-md transition-colors ${tool === 'connect' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`p-1.5 rounded-md transition-all ${tool === 'connect' ? 'bg-white shadow text-violet-600 ring-1 ring-violet-200' : 'text-gray-500 hover:text-gray-700'}`}
           ><Link2 className="w-4 h-4" /></button>
         </div>
-        <div className="h-5 w-px bg-gray-200 mx-1" />
+        <div className="h-4 w-px bg-gray-200 mx-1" />
         <button onClick={deleteSelected} disabled={!selected} title="Delete selected (Del)"
-          className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-colors"
+          className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-all"
         ><Trash2 className="w-4 h-4" /></button>
         <button onClick={clearCanvas} title="Clear canvas"
-          className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all"
         ><RotateCcw className="w-4 h-4" /></button>
-        <div className="h-5 w-px bg-gray-200 mx-1" />
+        <div className="h-4 w-px bg-gray-200 mx-1" />
         {selected && !selectedConn && (
-          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
-            {ELEMENT_DEFS[elements.find(e=>e.id===selected)?.type]?.label ?? 'Element'} selected · Del to remove · Dbl-click to rename
+          <span className="text-[9px] font-mono text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg tracking-widest uppercase">
+            {ELEMENT_DEFS[elements.find(e=>e.id===selected)?.type]?.label ?? 'Element'} · Del · Dbl-click
           </span>
         )}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 ml-auto">
+        <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-1 ml-auto">
           <button onClick={() => setMode('canvas')}
-            className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${mode === 'canvas' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-          >Draw Diagram</button>
+            className={`px-3 py-1 text-[10px] font-mono rounded-md tracking-widest uppercase transition-all ${mode === 'canvas' ? 'bg-white text-blue-600 shadow ring-1 ring-blue-100' : 'text-gray-500 hover:text-gray-700'}`}
+          >Diagram</button>
           <button onClick={() => setMode('image')}
-            className={`flex items-center gap-1 px-3 py-1 text-xs rounded-md font-medium transition-colors ${mode === 'image' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-          ><ImagePlus className="w-3 h-3" />Upload Image</button>
+            className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-mono rounded-md tracking-widest uppercase transition-all ${mode === 'image' ? 'bg-white text-blue-600 shadow ring-1 ring-blue-100' : 'text-gray-500 hover:text-gray-700'}`}
+          ><ImagePlus className="w-3 h-3" />Image</button>
         </div>
       </div>
 
@@ -885,16 +1036,16 @@ export default function ThreatModelCanvas({ value, onChange }) {
           <>
             {/* Palette */}
             <div className="w-44 bg-gray-50 border-r border-gray-200 flex flex-col flex-shrink-0 overflow-y-auto">
-              <div className="p-2">
+              <div className="p-2 pt-3">
                 {CATEGORIES.map((cat) => {
                   const isCollapsed = collapsed[cat.id];
                   return (
-                    <div key={cat.id} className="mb-1">
+                    <div key={cat.id} className="mb-1.5">
                       <button
                         className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
                         onClick={() => setCollapsed(c => ({ ...c, [cat.id]: !c[cat.id] }))}
                       >
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{cat.label}</span>
+                        <span className="text-[9px] font-mono font-semibold text-gray-400 uppercase tracking-widest">{cat.label}</span>
                         {isCollapsed ? <ChevronRight className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
                       </button>
                       {!isCollapsed && (
@@ -903,13 +1054,13 @@ export default function ThreatModelCanvas({ value, onChange }) {
                             const def = ELEMENT_DEFS[type];
                             return (
                               <div key={type} draggable onDragStart={(e) => onPaletteDragStart(e, type)}
-                                className="flex flex-col items-center gap-0.5 p-1.5 rounded-lg border border-dashed cursor-grab active:cursor-grabbing hover:bg-white hover:shadow-sm transition-all select-none"
-                                style={{ borderColor: def.color + '70', background: def.bg + '50' }}
+                                className="flex flex-col items-center gap-0.5 p-1.5 rounded-lg border cursor-grab active:cursor-grabbing hover:bg-white hover:shadow-sm transition-all select-none"
+                                style={{ borderColor: def.color + '50', background: def.bg + '60' }}
                                 title={def.desc}
                               >
                                 <PaletteIcon type={type} color={def.color} bg={def.bg} />
-                                <span className="text-xs font-medium text-center leading-tight mt-0.5 line-clamp-2"
-                                  style={{ color: def.color, fontSize: '10px' }}>{def.label}</span>
+                                <span className="text-center leading-tight mt-0.5 line-clamp-2 font-mono"
+                                  style={{ color: def.color, fontSize: '9px' }}>{def.label}</span>
                               </div>
                             );
                           })}
@@ -920,26 +1071,26 @@ export default function ThreatModelCanvas({ value, onChange }) {
                 })}
               </div>
               <div className="mt-auto p-3 border-t border-gray-200">
-                <p className="text-xs text-gray-400 flex items-start gap-1 leading-relaxed">
+                <p className="text-[9px] font-mono text-gray-400 flex items-start gap-1.5 leading-relaxed tracking-wider">
                   <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                  Drag to canvas · Dbl-click to rename · Del to remove
+                  drag · anchor · rename
                 </p>
               </div>
             </div>
 
             {/* Canvas */}
-            <div className="flex-1 overflow-hidden relative">
+            <div className="flex-1 overflow-hidden relative bg-white">
               {connecting && (
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-purple-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2">
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-purple-600 text-white text-[10px] font-mono px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 tracking-wide">
                   <Link2 className="w-3 h-3" />
-                  Click another component to connect · Esc to cancel
-                  <button onClick={() => { setConnecting(null); setTool('select'); }} className="ml-1 hover:text-purple-200"><X className="w-3 h-3" /></button>
+                  {anchorDrag ? 'drop on target · esc to cancel' : 'click target · esc to cancel'}
+                  <button onClick={() => { setConnecting(null); setAnchorDrag(null); setTool('select'); }} className="ml-1 hover:text-purple-200"><X className="w-3 h-3" /></button>
                 </div>
               )}
               <svg
                 ref={svgRef}
                 className="w-full h-full"
-                style={{ minHeight: 500, background: 'white', cursor: tool === 'connect' ? 'crosshair' : 'default' }}
+                style={{ minHeight: 500, background: '#f8fafc', cursor: tool === 'connect' ? 'crosshair' : 'default' }}
                 onDragOver={onCanvasDragOver}
                 onDrop={onCanvasDrop}
                 onMouseMove={onSVGMouseMove}
@@ -947,8 +1098,13 @@ export default function ThreatModelCanvas({ value, onChange }) {
                 onClick={onSVGClick}
               >
                 <defs>
-                  <pattern id="canvas-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-                    <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#e5e7eb" strokeWidth="0.5" />
+                  {/* CSS-based anchor visibility — no React state re-renders */}
+                  <style>{`
+                    .shape-anchors { opacity: 0; transition: opacity 0.15s ease; }
+                    .shape-group:hover .shape-anchors { opacity: 1; }
+                  `}</style>
+                  <pattern id="canvas-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <circle cx="1" cy="1" r="0.9" fill="#cbd5e1" opacity="0.7" />
                   </pattern>
                   {/* Arrow markers for all protocols */}
                   {MARKER_DEFS.map(({ id: mid, color }) => (
@@ -970,11 +1126,13 @@ export default function ThreatModelCanvas({ value, onChange }) {
 
                 {elements.length === 0 && !connecting && (
                   <g>
-                    <text x="50%" y="47%" textAnchor="middle" fill="#d1d5db" fontSize="15" fontWeight="500">
-                      Drag components from the palette to start diagramming
+                    <text x="50%" y="46%" textAnchor="middle" fill="#94a3b8" fontSize="12"
+                      fontFamily="ui-monospace, SFMono-Regular, 'Courier New', monospace" letterSpacing="0.08em">
+                      DROP COMPONENTS TO BEGIN ARCHITECTURE MAPPING
                     </text>
-                    <text x="50%" y="52%" textAnchor="middle" fill="#d1d5db" fontSize="13">
-                      Use the Connect tool (or press C) to draw data flows
+                    <text x="50%" y="51%" textAnchor="middle" fill="#cbd5e1" fontSize="10"
+                      fontFamily="ui-monospace, SFMono-Regular, 'Courier New', monospace" letterSpacing="0.04em">
+                      connect components · run AI analysis · identify threats
                     </text>
                   </g>
                 )}
@@ -1018,15 +1176,22 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   );
                 })}
 
-                {/* Live connection line */}
+                {/* Live connection line (connect mode or anchor drag) */}
                 {connecting && (() => {
                   const from = elements.find(e => e.id === connecting);
                   if (!from) return null;
-                  const fp = getEdgePoint(from, mousePos.x, mousePos.y);
+                  let startPt;
+                  if (anchorDrag) {
+                    const anchors = getAnchorPoints(from);
+                    const anchor = anchors.find(a => a.id === anchorDrag.anchorId);
+                    startPt = anchor ? { x: anchor.cx, y: anchor.cy } : getEdgePoint(from, lineEnd.x, lineEnd.y);
+                  } else {
+                    startPt = getEdgePoint(from, lineEnd.x, lineEnd.y);
+                  }
                   return (
-                    <line x1={fp.x} y1={fp.y} x2={mousePos.x} y2={mousePos.y}
-                      stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="6,4"
-                      markerEnd="url(#ae-conn)" />
+                    <line x1={startPt.x} y1={startPt.y} x2={lineEnd.x} y2={lineEnd.y}
+                      stroke="#8b5cf6" strokeWidth={2} strokeDasharray="6,4"
+                      markerEnd="url(#ae-conn)" style={{ pointerEvents: 'none' }} />
                   );
                 })()}
 
@@ -1035,10 +1200,14 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   <Shape key={el.id} el={el}
                     isSelected={selected === el.id}
                     isConnecting={connecting === el.id}
+                    isDragTarget={anchorDragTarget === el.id}
+                    isDragging={!!dragging || !!anchorDrag}
                     tool={tool}
                     onMouseDown={onElementMouseDown}
                     onDblClick={onDblClick}
                     onConnectClick={onConnectClick}
+                    onAnchorDown={onAnchorDown}
+                    onMouseUp={onElementMouseUp}
                     editingId={editing?.id}
                     editLabel={editing?.label ?? ''}
                     onEditChange={onEditChange}
@@ -1069,19 +1238,18 @@ export default function ThreatModelCanvas({ value, onChange }) {
                   className="w-full rounded-xl shadow-lg border border-gray-200 object-contain max-h-[500px]" />
                 <button
                   onClick={() => { setUploadedImage(null); emit(elements, connections, null); }}
-                  className="absolute top-3 right-3 p-1.5 bg-white rounded-full shadow-md text-gray-500 hover:text-red-500 transition-colors"
+                  className="absolute top-3 right-3 p-1.5 bg-white rounded-full shadow-md text-gray-400 hover:text-red-500 transition-colors"
                 ><X className="w-4 h-4" /></button>
-                <p className="text-center text-xs text-gray-400 mt-3">Click × to remove and upload a different image</p>
+                <p className="text-center text-[10px] font-mono text-gray-400 mt-3 tracking-wider">click × to remove</p>
               </div>
             ) : (
               <div
-                className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer max-w-md w-full"
+                className="border border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer max-w-md w-full"
                 onClick={() => fileRef.current?.click()}
               >
                 <ImagePlus className="w-10 h-10 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 font-medium mb-1">Upload a system diagram</p>
-                <p className="text-sm text-gray-400">PNG, JPG, SVG — drop or click to browse</p>
-                <p className="text-xs text-gray-400 mt-3">Use this as an alternative to the drawing canvas</p>
+                <p className="text-gray-600 font-mono text-sm mb-1 tracking-wide">Upload a system diagram</p>
+                <p className="text-xs font-mono text-gray-400 tracking-wider">PNG · JPG · SVG</p>
               </div>
             )}
             <input ref={fileRef} type="file" accept="image/*" onChange={onImageUpload} className="hidden" />

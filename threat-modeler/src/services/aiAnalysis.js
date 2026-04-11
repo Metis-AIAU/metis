@@ -391,7 +391,7 @@ function generateAssetsForProject(projectId, characteristics) {
 }
 
 // Generate data flows based on assets
-function generateDataFlowsForProject(projectId, assets, characteristics) {
+function generateDataFlowsForProject(projectId, assets, _characteristics) {
   const dataFlows = [];
   const userAsset = assets.find((a) => a.type === 'USER');
   const serviceAssets = assets.filter((a) => a.type === 'SERVICE');
@@ -607,7 +607,7 @@ const DETAILED_THREAT_DB = [
     key: 'error_disclosure', category: 'I', name: 'Verbose Error Message Disclosure',
     description: 'Detailed error messages including stack traces, database queries, or internal paths are exposed to end users, providing attackers with reconnaissance information.',
     likelihoodBase: 2, impactBase: 3,
-    getRationale: (f) => `Likelihood is LOW-MEDIUM — default framework configurations frequently include verbose error output. Impact is MEDIUM because revealed stack traces, connection strings, and library versions accelerate targeted attack planning.`,
+    getRationale: () => `Likelihood is LOW-MEDIUM — default framework configurations frequently include verbose error output. Impact is MEDIUM because revealed stack traces, connection strings, and library versions accelerate targeted attack planning.`,
     getResidualRationale: () => 'After implementing generic error messages in production and routing internal errors to a structured log, this risk drops to MINIMAL. Attackers receive no useful information from error responses.',
     recommendations: [
       { name: 'Generic Error Responses', type: 'PREVENTIVE', effort: 'LOW', effectiveness: 'HIGH', description: 'Return user-friendly generic error messages in production. Log the full error server-side with a correlation ID for debugging.' },
@@ -661,7 +661,7 @@ const DETAILED_THREAT_DB = [
     key: 'ot_lateral', category: 'T', name: 'IT-to-OT Lateral Movement',
     description: 'Attackers gain a foothold in the corporate IT network and use it to pivot into OT/ICS networks, potentially manipulating industrial control systems.',
     likelihoodBase: 3, impactBase: 5,
-    getRationale: (f) => `Likelihood is MEDIUM because IT/OT convergence creates pathways that are difficult to fully segment. Impact is CRITICAL for an OT environment because successful compromise of industrial control systems can result in physical damage, safety incidents, and prolonged operational shutdown.`,
+    getRationale: () => `Likelihood is MEDIUM because IT/OT convergence creates pathways that are difficult to fully segment. Impact is CRITICAL for an OT environment because successful compromise of industrial control systems can result in physical damage, safety incidents, and prolonged operational shutdown.`,
     getResidualRationale: () => 'Network segmentation with strict jump-server access reduces lateral movement significantly. After implementing a DMZ between IT and OT with application-layer inspection, residual risk drops to MEDIUM — sophisticated nation-state actors can still bridge well-designed segmentation.',
     recommendations: [
       { name: 'IT/OT Network Segmentation & DMZ', type: 'PREVENTIVE', effort: 'HIGH', effectiveness: 'HIGH', description: 'Place a demilitarised zone between IT and OT networks with stateful inspection firewalls. Allow only necessary protocols through the DMZ.' },
@@ -698,111 +698,122 @@ function riskLevelFromScore(score) {
  * detailed threat table with rationale, recommendations, and residual risk.
  */
 export async function analyzeWithContext(project, formData = {}, canvasElements = [], onProgress) {
+  // ── Try real Claude API via backend proxy first ──────────────────────────
+  onProgress?.({ step: 1, total: 4, message: 'Sending system context to Claude AI...' });
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, formData, canvasElements }),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        onProgress?.({ step: 2, total: 4, message: 'Claude is analysing attack surface...' });
+        await simulateDelay(400);
+        onProgress?.({ step: 3, total: 4, message: 'Scoring threats and generating mitigations...' });
+        await simulateDelay(400);
+        onProgress?.({ step: 4, total: 4, message: 'Compiling threat register...' });
+        await simulateDelay(200);
+        return data;
+      }
+      // Server responded but API key not set — fall through to simulation
+      if (data.error?.includes('ANTHROPIC_API_KEY')) {
+        console.info('[AI] API key not configured — using simulation mode');
+      }
+    }
+  } catch (err) {
+    // Backend not running or network error — fall through to simulation
+    console.info('[AI] Backend unavailable, using simulation mode:', err.message);
+  }
+
+  // ── Simulation fallback (no API key or backend unavailable) ─────────────
   const { id: projectId, name, description, tags } = project;
   const combined = `${name} ${description} ${tags?.join(' ')} ${formData.systemDescription || ''} ${formData.technologyStack || ''}`.toLowerCase();
 
-  try {
-    onProgress?.({ step: 1, total: 4, message: 'Analysing system characteristics and attack surface...' });
-    await simulateDelay(900);
+  onProgress?.({ step: 1, total: 4, message: 'Analysing system characteristics and attack surface...' });
+  await simulateDelay(900);
 
-    // Determine which threats are applicable
-    const characteristics = analyzeProjectCharacteristics(name, description, tags);
-    // Merge with form-level architecture types
-    const archTypes = (formData.architectureTypes || []).map(a => a.toLowerCase().replace(/[^a-z]/g, ''));
-    const allChars = [...new Set([...characteristics, ...archTypes])];
+  const characteristics = analyzeProjectCharacteristics(name, description, tags);
+  const archTypes = (formData.architectureTypes || []).map(a => a.toLowerCase().replace(/[^a-z]/g, ''));
+  const allChars = [...new Set([...characteristics, ...archTypes])];
 
-    onProgress?.({ step: 2, total: 4, message: 'Selecting and scoring applicable threat scenarios...' });
-    await simulateDelay(1200);
+  onProgress?.({ step: 2, total: 4, message: 'Selecting and scoring applicable threat scenarios...' });
+  await simulateDelay(1200);
 
-    // Filter relevant threats from DB
-    const applicable = DETAILED_THREAT_DB.filter(t =>
-      t.applicableTo.some(a => allChars.includes(a) || combined.includes(a))
+  const applicable = DETAILED_THREAT_DB.filter(t =>
+    t.applicableTo.some(a => allChars.includes(a) || combined.includes(a))
+  );
+  const pool = applicable.length >= 5 ? applicable : DETAILED_THREAT_DB.slice(0, 8);
+
+  onProgress?.({ step: 3, total: 4, message: 'Generating risk rationale and control recommendations...' });
+  await simulateDelay(1100);
+
+  const componentNames = canvasElements
+    .filter(e => e.type !== 'trust_boundary')
+    .map(e => e.label || ELEMENT_DEFS_FALLBACK[e.type] || e.type)
+    .filter(Boolean);
+
+  const threatRows = pool.map(tDef => {
+    const exposureMod = formData.networkExposure === 'internet' ? 1 : formData.networkExposure === 'internal' ? -1 : 0;
+    const likelihood  = Math.min(5, Math.max(1, tDef.likelihoodBase + exposureMod + (Math.random() > 0.5 ? 1 : 0)));
+    const impact      = Math.min(5, Math.max(1, tDef.impactBase));
+    const riskScore   = likelihood * impact;
+    const riskLevel   = riskLevelFromScore(riskScore);
+    const residualFactor = RESIDUAL_FACTOR[tDef.category] ?? 0.25;
+    const residualRiskScore = Math.max(1, Math.round(riskScore * residualFactor));
+    const residualRiskLevel = riskLevelFromScore(residualRiskScore);
+    const affected = componentNames.length > 0 ? componentNames.slice(0, 3) : ['System'];
+
+    // recommendations from DETAILED_THREAT_DB are objects — normalise to strings
+    const recs = (tDef.recommendations || []).map(r =>
+      typeof r === 'string' ? r : (r.name ? `${r.name}${r.description ? ': ' + r.description : ''}` : String(r))
     );
 
-    // Supplement with generic threats if few found
-    const pool = applicable.length >= 5 ? applicable : DETAILED_THREAT_DB.slice(0, 8);
-
-    onProgress?.({ step: 3, total: 4, message: 'Generating risk rationale and control recommendations...' });
-    await simulateDelay(1100);
-
-    // Identify component names from canvas
-    const componentNames = canvasElements
-      .filter(e => e.type !== 'trust_boundary')
-      .map(e => e.label || ELEMENT_DEFS_FALLBACK[e.type] || e.type)
-      .filter(Boolean);
-
-    // Build detailed threat analysis rows
-    const threatRows = pool.map(tDef => {
-      // Slightly vary likelihood/impact based on form data
-      const exposureMod = formData.networkExposure === 'internet' ? 1 : formData.networkExposure === 'internal' ? -1 : 0;
-      const likelihood  = Math.min(5, Math.max(1, tDef.likelihoodBase + exposureMod + (Math.random() > 0.5 ? 1 : 0)));
-      const impact      = Math.min(5, Math.max(1, tDef.impactBase));
-      const riskScore   = likelihood * impact;
-      const riskLevel   = riskLevelFromScore(riskScore);
-
-      const residualFactor = RESIDUAL_FACTOR[tDef.category] ?? 0.25;
-      const residualRiskScore  = Math.max(1, Math.round(riskScore * residualFactor));
-      const residualRiskLevel  = riskLevelFromScore(residualRiskScore);
-
-      // Pick relevant affected components from canvas
-      const affected = componentNames.length > 0
-        ? componentNames.slice(0, Math.min(3, componentNames.length))
-        : ['System'];
-
-      return {
-        id: uuidv4(),
-        projectId,
-        name: tDef.name,
-        strideCategory: tDef.category,
-        description: tDef.description,
-        affectedComponents: affected,
-        likelihood,
-        impact,
-        riskScore,
-        riskLevel,
-        rationale: tDef.getRationale(formData),
-        recommendations: tDef.recommendations,
-        residualRiskScore,
-        residualRiskLevel,
-        residualRationale: tDef.getResidualRationale(formData),
-        attackVector: 'Network',
-        aiGenerated: true,
-        createdAt: new Date().toISOString(),
-      };
-    });
-
-    // Sort: critical first
-    threatRows.sort((a, b) => b.riskScore - a.riskScore);
-
-    onProgress?.({ step: 4, total: 4, message: 'Compiling threat register and risk summary...' });
-    await simulateDelay(600);
-
-    // Also generate standard assets/controls/dataFlows for project import
-    const assets    = generateAssetsForProject(projectId, allChars);
-    const controls  = generateControlsForProject(projectId, threatRows, allChars);
-    const dataFlows = generateDataFlowsForProject(projectId, assets, allChars);
-
     return {
-      success: true,
-      threatRows,
-      threats: threatRows, // compatible with importAIResults
-      controls,
-      assets,
-      dataFlows,
-      summary: {
-        characteristics: allChars,
-        threatCount: threatRows.length,
-        criticalThreats: threatRows.filter(t => t.riskLevel === 'CRITICAL').length,
-        highThreats: threatRows.filter(t => t.riskLevel === 'HIGH').length,
-        controlCount: controls.length,
-        assetCount: assets.length,
-        riskScore: calculateOverallRiskScore(threatRows),
-      },
+      id: uuidv4(), projectId,
+      name: tDef.name,
+      strideCategory: tDef.category,
+      description: tDef.description,
+      affectedComponents: affected,
+      likelihood, impact, riskScore, riskLevel,
+      rationale: tDef.getRationale(formData),
+      recommendations: recs,
+      residualRiskScore, residualRiskLevel,
+      residualRationale: tDef.getResidualRationale(formData),
+      attackVector: 'Network',
+      aiGenerated: true,
+      aiModel: 'simulation',
+      createdAt: new Date().toISOString(),
     };
-  } catch (err) {
-    console.error('analyzeWithContext error:', err);
-    return { success: false, error: err.message };
-  }
+  });
+
+  threatRows.sort((a, b) => b.riskScore - a.riskScore);
+
+  onProgress?.({ step: 4, total: 4, message: 'Compiling threat register and risk summary...' });
+  await simulateDelay(600);
+
+  const assets    = generateAssetsForProject(projectId, allChars);
+  const controls  = generateControlsForProject(projectId, threatRows, allChars);
+  const dataFlows = generateDataFlowsForProject(projectId, assets, allChars);
+
+  return {
+    success: true,
+    threatRows,
+    threats: threatRows,
+    controls, assets, dataFlows,
+    summary: {
+      characteristics: allChars,
+      threatCount: threatRows.length,
+      criticalThreats: threatRows.filter(t => t.riskLevel === 'CRITICAL').length,
+      highThreats: threatRows.filter(t => t.riskLevel === 'HIGH').length,
+      controlCount: controls.length,
+      assetCount: assets.length,
+      riskScore: calculateOverallRiskScore(threatRows),
+    },
+  };
 }
 
 // Fallback label map for canvas element types

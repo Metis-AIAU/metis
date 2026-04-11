@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -18,6 +18,8 @@ import {
   Key,
   Globe,
   Lock,
+  ExternalLink,
+  Save,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +32,25 @@ export default function Settings() {
   const [exportStatus, setExportStatus] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [showSecrets, setShowSecrets] = useState(false);
+
+  // Confluence config — persisted in localStorage per user
+  const CONFLUENCE_KEY = 'confluenceConfig';
+  const [confluenceConfig, setConfluenceConfig] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CONFLUENCE_KEY) || '{}'); } catch { return {}; }
+  });
+  const [showConfluenceToken, setShowConfluenceToken] = useState(false);
+  const [confluenceSaved, setConfluenceSaved] = useState(false);
+
+  const saveConfluenceConfig = () => {
+    localStorage.setItem(CONFLUENCE_KEY, JSON.stringify(confluenceConfig));
+    setConfluenceSaved(true);
+    setTimeout(() => setConfluenceSaved(false), 2500);
+  };
+
+  const clearConfluenceConfig = () => {
+    localStorage.removeItem(CONFLUENCE_KEY);
+    setConfluenceConfig({});
+  };
 
   const isAdmin = isTeamOwner || isTeamAdmin || !team;
 
@@ -393,6 +414,131 @@ export default function Settings() {
             </div>
           </motion.div>
         )}
+
+        {/* Confluence Integration */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="card lg:col-span-2"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <ExternalLink className="w-5 h-5 text-blue-500" />
+              <h2 className="font-semibold text-gray-900">Confluence Integration</h2>
+              {confluenceConfig.baseUrl && confluenceConfig.apiToken && (
+                <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Configured
+                </span>
+              )}
+            </div>
+            <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noreferrer"
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+              Get API Token <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
+          <p className="text-sm text-gray-500 mb-5">
+            Configure your Atlassian Confluence credentials to export threat model reports directly as Confluence pages.
+            Credentials are stored only in your browser's local storage and never sent to our servers.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Base URL */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                Confluence Base URL
+              </label>
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-200">
+                <Globe className="w-4 h-4 text-gray-400 ml-3 flex-shrink-0" />
+                <input
+                  type="url"
+                  placeholder="https://yourorg.atlassian.net"
+                  value={confluenceConfig.baseUrl || ''}
+                  onChange={e => setConfluenceConfig(p => ({ ...p, baseUrl: e.target.value }))}
+                  className="flex-1 px-3 py-2.5 text-sm outline-none bg-transparent"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">e.g. https://acme.atlassian.net</p>
+            </div>
+
+            {/* Space Key */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                Space Key
+              </label>
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-200">
+                <Key className="w-4 h-4 text-gray-400 ml-3 flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder="~MYSPACE"
+                  value={confluenceConfig.spaceKey || ''}
+                  onChange={e => setConfluenceConfig(p => ({ ...p, spaceKey: e.target.value }))}
+                  className="flex-1 px-3 py-2.5 text-sm outline-none bg-transparent font-mono"
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">The key shown in your Confluence space URL</p>
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                Atlassian Email
+              </label>
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-200">
+                <Shield className="w-4 h-4 text-gray-400 ml-3 flex-shrink-0" />
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={confluenceConfig.email || ''}
+                  onChange={e => setConfluenceConfig(p => ({ ...p, email: e.target.value }))}
+                  className="flex-1 px-3 py-2.5 text-sm outline-none bg-transparent"
+                />
+              </div>
+            </div>
+
+            {/* API Token */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                API Token
+              </label>
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-200">
+                <Lock className="w-4 h-4 text-gray-400 ml-3 flex-shrink-0" />
+                <input
+                  type={showConfluenceToken ? 'text' : 'password'}
+                  placeholder="Your Atlassian API token"
+                  value={confluenceConfig.apiToken || ''}
+                  onChange={e => setConfluenceConfig(p => ({ ...p, apiToken: e.target.value }))}
+                  className="flex-1 px-3 py-2.5 text-sm outline-none bg-transparent font-mono"
+                />
+                <button onClick={() => setShowConfluenceToken(v => !v)}
+                  className="px-3 text-gray-400 hover:text-gray-600">
+                  {showConfluenceToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-5">
+            <button
+              onClick={saveConfluenceConfig}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-white hover:bg-slate-700 transition-colors"
+            >
+              {confluenceSaved
+                ? <><CheckCircle2 className="w-4 h-4 text-green-400" /> Saved!</>
+                : <><Save className="w-4 h-4" /> Save Configuration</>}
+            </button>
+            {confluenceConfig.apiToken && (
+              <button onClick={clearConfluenceConfig}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                <Trash2 className="w-4 h-4" /> Clear
+              </button>
+            )}
+            <p className="text-xs text-gray-400 ml-auto">
+              Stored in browser localStorage only — never transmitted to Threat Modeler servers.
+            </p>
+          </div>
+        </motion.div>
 
         {/* About */}
         <motion.div

@@ -18,18 +18,24 @@ import {
   Zap,
   AlertCircle,
   PrinterCheck,
-  ChevronDown,
   LayoutGrid,
+  LayoutTemplate,
+  PenTool,
+  Building2,
   UserCircle,
   LogOut,
   WifiOff,
+  Sparkles,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Executive View', href: '/executive', icon: Building2 },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
+  { name: 'Diagram', href: '/diagram', icon: PenTool },
+  { name: 'Advanced Analysis', href: '/advanced', icon: Sparkles },
   { name: 'Threats', href: '/threats', icon: AlertTriangle },
   { name: 'Controls', href: '/controls', icon: Shield },
   { name: 'Risk Matrix', href: '/risk-matrix', icon: BarChart3 },
@@ -81,7 +87,7 @@ export default function Layout({ children }) {
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <h1 className="text-lg font-bold text-gray-900">ThreatModeler</h1>
+                  <h1 className="text-lg font-bold text-gray-900">Metis</h1>
                   <p className="text-xs text-gray-500">Security Analysis</p>
                 </motion.div>
               )}

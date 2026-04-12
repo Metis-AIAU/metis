@@ -1,0 +1,11 @@
+node_modules
+server/node_modules
+dist
+server/data
+.env
+server/.env
+*.local
+.DS_Store
+e2e
+playwright-report
+test-results

@@ -14,6 +14,7 @@ import {
   Target,
   Zap,
   Info,
+  CheckCircle2,
 } from 'lucide-react';
 import { useThreatContext, STRIDE_CATEGORIES, RISK_LEVELS } from '../context/ThreatContext';
 
@@ -25,6 +26,7 @@ export default function Threats() {
     deleteThreat,
     getThreatControls,
     calculateRiskScore,
+    isThreatMitigated,
   } = useThreatContext();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,6 +36,7 @@ export default function Threats() {
   const [showModal, setShowModal] = useState(false);
   const [editingThreat, setEditingThreat] = useState(null);
   const [expandedThreat, setExpandedThreat] = useState(null);
+  const [filterMitigation, setFilterMitigation] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -54,9 +57,14 @@ export default function Threats() {
       const matchesCategory = !filterCategory || threat.strideCategory === filterCategory;
       const matchesRisk = !filterRisk || threat.riskLevel === filterRisk;
       const matchesProject = !filterProject || threat.projectId === filterProject;
-      return matchesSearch && matchesCategory && matchesRisk && matchesProject;
+      const mitigated = isThreatMitigated(threat.id);
+      const matchesMitigation =
+        !filterMitigation ||
+        (filterMitigation === 'mitigated' && mitigated) ||
+        (filterMitigation === 'unmitigated' && !mitigated);
+      return matchesSearch && matchesCategory && matchesRisk && matchesProject && matchesMitigation;
     });
-  }, [state.threats, searchQuery, filterCategory, filterRisk, filterProject]);
+  }, [state.threats, state.controls, searchQuery, filterCategory, filterRisk, filterProject, filterMitigation, isThreatMitigated]);
 
   const getRiskLevel = (likelihood, impact) => {
     const score = likelihood * impact;
@@ -237,6 +245,16 @@ export default function Threats() {
             </option>
           ))}
         </select>
+
+        <select
+          value={filterMitigation}
+          onChange={(e) => setFilterMitigation(e.target.value)}
+          className="input w-auto"
+        >
+          <option value="">All Statuses</option>
+          <option value="mitigated">Mitigated</option>
+          <option value="unmitigated">Unmitigated</option>
+        </select>
       </motion.div>
 
       {/* Threats List */}
@@ -250,6 +268,7 @@ export default function Threats() {
           const controls = getThreatControls(threat.id);
           const isExpanded = expandedThreat === threat.id;
           const riskScore = calculateRiskScore(threat.likelihood, threat.impact);
+          const mitigated = isThreatMitigated(threat.id);
 
           return (
             <motion.div
@@ -257,7 +276,11 @@ export default function Threats() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.03 }}
-              className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+              className={`rounded-xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow ${
+                mitigated
+                  ? 'bg-gray-50 border-gray-200 opacity-60'
+                  : 'bg-white border-gray-100'
+              }`}
             >
               <div
                 className="p-6 cursor-pointer"
@@ -267,7 +290,7 @@ export default function Threats() {
                   {/* STRIDE Badge */}
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-white text-lg"
-                    style={{ backgroundColor: STRIDE_CATEGORIES[threat.strideCategory]?.color }}
+                    style={{ backgroundColor: mitigated ? '#9ca3af' : STRIDE_CATEGORIES[threat.strideCategory]?.color }}
                   >
                     {threat.strideCategory}
                   </div>
@@ -276,15 +299,21 @@ export default function Threats() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="font-semibold text-gray-900 text-lg">{threat.name}</h3>
+                        <h3 className={`font-semibold text-lg ${mitigated ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{threat.name}</h3>
                         <p className="text-sm text-gray-500 mt-1 line-clamp-2">{threat.description}</p>
                       </div>
                       <div className="flex items-center gap-2 ml-4">
+                        {mitigated && (
+                          <span className="badge bg-green-100 text-green-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Mitigated
+                          </span>
+                        )}
                         <span
                           className="badge"
                           style={{
-                            backgroundColor: RISK_LEVELS[threat.riskLevel]?.bgColor,
-                            color: RISK_LEVELS[threat.riskLevel]?.color,
+                            backgroundColor: mitigated ? '#f3f4f6' : RISK_LEVELS[threat.riskLevel]?.bgColor,
+                            color: mitigated ? '#9ca3af' : RISK_LEVELS[threat.riskLevel]?.color,
                           }}
                         >
                           {RISK_LEVELS[threat.riskLevel]?.label}

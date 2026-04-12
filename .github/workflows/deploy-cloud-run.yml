@@ -1,0 +1,110 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'threat-modeler/**'
+      - '.github/workflows/deploy-cloud-run.yml'
+
+env:
+  PROJECT_ID: 499037545252
+  REGION: australia-southeast1
+  SERVICE: metis-threat-modeler
+  IMAGE: gcr.io/499037545252/metis-threat-modeler
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity Federation
+
+    steps:
+      # ── Checkout ───────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Auth to GCP (Workload Identity — no long-lived key needed) ─────────
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # ── Fetch build-time secrets from Secret Manager ───────────────────────
+      # VITE_* vars are baked into the JS bundle at build time — they must be
+      # fetched here and passed as Docker build args (not available at runtime).
+      - name: Fetch build-time secrets
+        run: |
+          echo "VITE_FIREBASE_API_KEY=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_API_KEY --project=$PROJECT_ID)" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_AUTH_DOMAIN=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_AUTH_DOMAIN --project=$PROJECT_ID 2>/dev/null \
+            || echo 'metis-ai-1551.firebaseapp.com')" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_PROJECT_ID=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_PROJECT_ID --project=$PROJECT_ID 2>/dev/null \
+            || echo 'metis-ai-1551')" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_STORAGE_BUCKET=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_STORAGE_BUCKET --project=$PROJECT_ID 2>/dev/null \
+            || echo 'metis-ai-1551.firebasestorage.app')" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_MESSAGING_SENDER_ID --project=$PROJECT_ID 2>/dev/null \
+            || echo '499037545252')" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_APP_ID=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_APP_ID --project=$PROJECT_ID 2>/dev/null \
+            || echo '1:499037545252:web:825cfe20d859dab64d09b1')" >> $GITHUB_ENV
+          echo "VITE_FIREBASE_MEASUREMENT_ID=$(gcloud secrets versions access latest \
+            --secret=VITE_FIREBASE_MEASUREMENT_ID --project=$PROJECT_ID 2>/dev/null \
+            || echo 'G-FQQHSZDN3S')" >> $GITHUB_ENV
+
+      # ── Configure Docker to push to GCR ───────────────────────────────────
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+
+      # ── Build image — pass Firebase config as build args ──────────────────
+      - name: Build Docker image
+        working-directory: threat-modeler
+        run: |
+          docker build \
+            --build-arg VITE_FIREBASE_API_KEY="$VITE_FIREBASE_API_KEY" \
+            --build-arg VITE_FIREBASE_AUTH_DOMAIN="$VITE_FIREBASE_AUTH_DOMAIN" \
+            --build-arg VITE_FIREBASE_PROJECT_ID="$VITE_FIREBASE_PROJECT_ID" \
+            --build-arg VITE_FIREBASE_STORAGE_BUCKET="$VITE_FIREBASE_STORAGE_BUCKET" \
+            --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID="$VITE_FIREBASE_MESSAGING_SENDER_ID" \
+            --build-arg VITE_FIREBASE_APP_ID="$VITE_FIREBASE_APP_ID" \
+            --build-arg VITE_FIREBASE_MEASUREMENT_ID="$VITE_FIREBASE_MEASUREMENT_ID" \
+            --tag "$IMAGE:$GITHUB_SHA" \
+            --tag "$IMAGE:latest" \
+            .
+
+      # ── Push to Google Container Registry ─────────────────────────────────
+      - name: Push Docker image
+        run: |
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"
+
+      # ── Deploy to Cloud Run — runtime secrets injected from Secret Manager ─
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE:$GITHUB_SHA" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 10 \
+            --set-secrets "ANTHROPIC_API_KEY=APIkeyclaude:latest,JWT_SECRET=jwt-secret:latest" \
+            --set-env-vars "NODE_ENV=production" \
+            --quiet
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe "$SERVICE" \
+            --region "$REGION" \
+            --format "value(status.url)"

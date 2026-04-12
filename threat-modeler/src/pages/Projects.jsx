@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -14,12 +14,11 @@ import {
   Calendar,
   Tag,
   Users,
-  ChevronRight,
   X,
   Brain,
   Sparkles,
 } from 'lucide-react';
-import { useThreatContext, RISK_LEVELS } from '../context/ThreatContext';
+import { useThreatContext } from '../context/ThreatContext';
 import AIAnalysisModal from '../components/AIAnalysisModal';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -27,7 +26,6 @@ export default function Projects() {
   const navigate = useNavigate();
   const {
     state,
-    addProject,
     addProjectWithId,
     updateProject,
     deleteProject,
@@ -147,11 +145,7 @@ export default function Projects() {
           <p className="text-gray-500 mt-1">Manage your threat modeling projects and scenarios</p>
         </div>
         <button
-          onClick={() => {
-            setEditingProject(null);
-            setFormData({ name: '', description: '', owner: '', status: 'active', tags: '' });
-            setShowModal(true);
-          }}
+          onClick={() => navigate('/projects/new')}
           className="btn-primary"
         >
           <Plus className="w-5 h-5 mr-2" />
@@ -352,7 +346,7 @@ export default function Projects() {
             </p>
             {!searchQuery && (
               <button
-                onClick={() => setShowModal(true)}
+                onClick={() => navigate('/projects/new')}
                 className="btn-primary"
               >
                 <Plus className="w-5 h-5 mr-2" />

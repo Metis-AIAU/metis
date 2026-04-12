@@ -2,17 +2,22 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThreatProvider } from './context/ThreatContext';
 import { ComplianceProvider } from './context/ComplianceContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { TeamProvider } from './context/TeamContext';
+import InteractivityMonitor from './components/InteractivityMonitor';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
-import ThreatModelingWorkspace from './pages/ThreatModelingWorkspace';
+import NewProject from './pages/NewProject';
 import Threats from './pages/Threats';
 import Controls from './pages/Controls';
 import RiskMatrix from './pages/RiskMatrix';
 import DataFlows from './pages/DataFlows';
 import Settings from './pages/Settings';
+import ExecutiveView from './pages/ExecutiveView';
+import DiagramPage from './pages/Diagram';
+import AdvancedAnalysis from './pages/AdvancedAnalysis';
 import ComplianceDashboard from './pages/compliance/ComplianceDashboard';
 import AESCSFPage from './pages/compliance/AESCSFPage';
 import SOCIPage from './pages/compliance/SOCIPage';
@@ -50,9 +55,12 @@ function AppRoutes() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/executive" element={<ExecutiveView />} />
                 <Route path="/projects" element={<Projects />} />
+                <Route path="/projects/new" element={<NewProject />} />
                 <Route path="/projects/:projectId" element={<ProjectDetail />} />
-                <Route path="/projects/:projectId/workspace" element={<ThreatModelingWorkspace />} />
+                <Route path="/diagram" element={<DiagramPage />} />
+                <Route path="/advanced" element={<AdvancedAnalysis />} />
                 <Route path="/threats" element={<Threats />} />
                 <Route path="/threats/:threatId" element={<Threats />} />
                 <Route path="/controls" element={<Controls />} />
@@ -79,13 +87,16 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <ThreatProvider>
-        <ComplianceProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </ComplianceProvider>
-      </ThreatProvider>
+      <TeamProvider>
+        <ThreatProvider>
+          <ComplianceProvider>
+            <BrowserRouter>
+              <AppRoutes />
+              <InteractivityMonitor />
+            </BrowserRouter>
+          </ComplianceProvider>
+        </ThreatProvider>
+      </TeamProvider>
     </AuthProvider>
   );
 }

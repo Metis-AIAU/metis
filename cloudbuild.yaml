@@ -1,34 +1,34 @@
 steps:
-  # ── Fetch build-time secrets from Secret Manager ──────────────────────────
+  # ── Step 1: Fetch Firebase build-time secrets from Secret Manager ─────────
+  # VITE_* vars are compiled into the JS bundle by Vite — they must be
+  # available before `docker build`, not at container runtime.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: fetch-secrets
     entrypoint: bash
     args:
       - -c
       - |
+        mkdir -p /workspace/secrets
         gcloud secrets versions access latest --secret=VITE_FIREBASE_API_KEY \
           --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_API_KEY
         gcloud secrets versions access latest --secret=VITE_FIREBASE_AUTH_DOMAIN \
-          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_AUTH_DOMAIN 2>/dev/null \
-          || echo "metis-ai-1551.firebaseapp.com" > /workspace/secrets/VITE_FIREBASE_AUTH_DOMAIN
+          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_AUTH_DOMAIN
         gcloud secrets versions access latest --secret=VITE_FIREBASE_PROJECT_ID \
-          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_PROJECT_ID 2>/dev/null \
-          || echo "metis-ai-1551" > /workspace/secrets/VITE_FIREBASE_PROJECT_ID
+          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_PROJECT_ID
         gcloud secrets versions access latest --secret=VITE_FIREBASE_STORAGE_BUCKET \
-          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_STORAGE_BUCKET 2>/dev/null \
-          || echo "metis-ai-1551.firebasestorage.app" > /workspace/secrets/VITE_FIREBASE_STORAGE_BUCKET
+          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_STORAGE_BUCKET
         gcloud secrets versions access latest --secret=VITE_FIREBASE_MESSAGING_SENDER_ID \
-          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_MESSAGING_SENDER_ID 2>/dev/null \
-          || echo "499037545252" > /workspace/secrets/VITE_FIREBASE_MESSAGING_SENDER_ID
+          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_MESSAGING_SENDER_ID
         gcloud secrets versions access latest --secret=VITE_FIREBASE_APP_ID \
-          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_APP_ID 2>/dev/null \
-          || echo "1:499037545252:web:825cfe20d859dab64d09b1" > /workspace/secrets/VITE_FIREBASE_APP_ID
+          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_APP_ID
         gcloud secrets versions access latest --secret=VITE_FIREBASE_MEASUREMENT_ID \
-          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_MEASUREMENT_ID 2>/dev/null \
-          || echo "G-FQQHSZDN3S" > /workspace/secrets/VITE_FIREBASE_MEASUREMENT_ID
-        mkdir -p /workspace/secrets
+          --project=$PROJECT_ID > /workspace/secrets/VITE_FIREBASE_MEASUREMENT_ID
+        echo "✓ All secrets fetched"
 
-  # ── Build the Docker image from threat-modeler/ ───────────────────────────
+  # ── Step 2: Build Docker image ────────────────────────────────────────────
+  # Dockerfile lives in threat-modeler/; build context is that subdirectory.
+  # Firebase config is passed as --build-arg and compiled into the React bundle.
+  # The builder stage is discarded — secrets never persist in the final image.
   - name: gcr.io/cloud-builders/docker
     id: build
     entrypoint: bash
@@ -48,7 +48,7 @@ steps:
           --file threat-modeler/Dockerfile \
           threat-modeler
 
-  # ── Push to Container Registry ────────────────────────────────────────────
+  # ── Step 3: Push image to Container Registry ──────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: push
     args:
@@ -56,7 +56,9 @@ steps:
       - --all-tags
       - gcr.io/$PROJECT_ID/metis-threat-modeler
 
-  # ── Deploy to Cloud Run ───────────────────────────────────────────────────
+  # ── Step 4: Deploy to Cloud Run ───────────────────────────────────────────
+  # Runtime secrets (ANTHROPIC_API_KEY, JWT_SECRET) are injected by Cloud Run
+  # from Secret Manager — they are never in the image or build logs.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy
     entrypoint: gcloud
@@ -83,3 +85,4 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8   # faster builds

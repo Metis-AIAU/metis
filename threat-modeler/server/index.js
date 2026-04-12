@@ -56,6 +56,7 @@ if (fs.existsSync(distPath)) {
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`[server] OT Compliance API running on http://localhost:${PORT}`);
+// Bind to 0.0.0.0 so Cloud Run's health checks can reach the container
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[server] Metis running on port ${PORT}`);
 });

@@ -133,12 +133,14 @@ export function AuthProvider({ children }) {
   /** Sign out */
   const logout = useCallback(async () => {
     await signOut(auth);
+    // AuthStateChanged listener will clear user state automatically
   }, []);
 
   const value = {
     user,
     isLoading,
     isOffline:       false,
+    isOffline:       false,   // Firebase SDK handles offline transparently
     isAuthenticated: !!user,
     login,
     register,

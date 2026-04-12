@@ -15,6 +15,20 @@ function friendlyError(err) {
   if (code === 'auth/too-many-requests')         return 'Too many attempts. Please wait a moment.';
   if (code === 'auth/network-request-failed')    return 'Network error — check your connection.';
   return err.message || 'Something went wrong. Please try again.';
+// Map Firebase error codes to friendly messages
+function friendlyError(err) {
+  const code = err?.code || '';
+  if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential')
+    return 'Invalid email or password.';
+  if (code === 'auth/email-already-in-use')
+    return 'An account with this email already exists.';
+  if (code === 'auth/weak-password')
+    return 'Password must be at least 6 characters.';
+  if (code === 'auth/invalid-email')
+    return 'Please enter a valid email address.';
+  if (code === 'auth/too-many-requests')
+    return 'Too many attempts. Please try again later.';
+  return err?.message || 'Something went wrong. Please try again.';
 }
 
 export default function Login() {
@@ -25,10 +39,14 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [mode, setMode]                     = useState('login'); // 'login' | 'register'
+  const [email, setEmail]                   = useState('');
+  const [displayName, setDisplayName]       = useState('');
+  const [password, setPassword]             = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword]     = useState(false);
+  const [error, setError]                   = useState('');
+  const [isSubmitting, setIsSubmitting]     = useState(false);
 
   const isRegister = mode === 'register';
 
@@ -104,6 +122,31 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+
+            {/* Display name (register only) */}
+            <AnimatePresence>
+              {isRegister && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    placeholder="How should we call you?"
+                    autoComplete="name"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">

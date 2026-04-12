@@ -1,75 +1,57 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { AESCSF_FUNCTIONS, COMPLIANCE_STATUS } from '../data/aescsf';
 import { SOCI_OBLIGATIONS } from '../data/soci';
 import { ASD_FORTIFY_STRATEGIES } from '../data/asdFortify';
 import { E8_STRATEGIES, computeAchievedMaturity } from '../data/essentialEight';
 import { useAuth } from './AuthContext';
-import { apiGet, apiPut, apiPost, NetworkError } from '../services/api';
+import { db } from '../firebase';
 
 const ComplianceContext = createContext(null);
 
-// Build initial state from framework data
+// ── Initial state helpers ──────────────────────────────────────────────────
+
 function buildInitialAssessments() {
   const assessments = {};
 
-  // AESCSF controls
   AESCSF_FUNCTIONS.forEach(fn => {
     fn.categories.forEach(cat => {
       cat.controls.forEach(ctrl => {
         assessments[ctrl.id] = {
           status: COMPLIANCE_STATUS.NOT_ASSESSED.id,
-          evidence: '',
-          notes: '',
-          assignee: '',
-          targetDate: '',
-          lastUpdated: null,
-          framework: 'AESCSF',
+          evidence: '', notes: '', assignee: '', targetDate: '',
+          lastUpdated: null, framework: 'AESCSF',
         };
       });
     });
   });
 
-  // SOCI obligations
   SOCI_OBLIGATIONS.forEach(obl => {
     obl.controls.forEach(ctrl => {
       assessments[ctrl.id] = {
         status: COMPLIANCE_STATUS.NOT_ASSESSED.id,
-        evidence: '',
-        notes: '',
-        assignee: '',
-        targetDate: '',
-        lastUpdated: null,
-        framework: 'SOCI',
+        evidence: '', notes: '', assignee: '', targetDate: '',
+        lastUpdated: null, framework: 'SOCI',
       };
     });
   });
 
-  // ASD Fortify controls
   ASD_FORTIFY_STRATEGIES.forEach(strategy => {
     strategy.controls.forEach(ctrl => {
       assessments[ctrl.id] = {
         status: COMPLIANCE_STATUS.NOT_ASSESSED.id,
-        evidence: '',
-        notes: '',
-        assignee: '',
-        targetDate: '',
-        lastUpdated: null,
-        framework: 'ASD_FORTIFY',
+        evidence: '', notes: '', assignee: '', targetDate: '',
+        lastUpdated: null, framework: 'ASD_FORTIFY',
       };
     });
   });
 
-  // Essential Eight controls
   E8_STRATEGIES.forEach(strategy => {
     strategy.controls.forEach(ctrl => {
       assessments[ctrl.id] = {
         status: COMPLIANCE_STATUS.NOT_ASSESSED.id,
-        evidence: '',
-        notes: '',
-        assignee: '',
-        targetDate: '',
-        lastUpdated: null,
-        framework: 'ESSENTIAL_EIGHT',
+        evidence: '', notes: '', assignee: '', targetDate: '',
+        lastUpdated: null, framework: 'ESSENTIAL_EIGHT',
       };
     });
   });
@@ -78,32 +60,23 @@ function buildInitialAssessments() {
 }
 
 const INITIAL_STATE = {
-  aescsfProfile: 'SP1',
+  aescsfProfile:     'SP1',
   asdTargetMaturity: 'ML2',
-  // Target maturity level for Essential Eight (per-strategy overrides or global)
-  e8TargetMaturity: 'ML2',
-  isSoNS: false,
-  organisation: {
-    name: '',
-    sector: '',
-    abn: '',
-    contactName: '',
-    contactEmail: '',
-  },
+  e8TargetMaturity:  'ML2',
+  isSoNS:            false,
+  organisation: { name: '', sector: '', abn: '', contactName: '', contactEmail: '' },
   assessments: buildInitialAssessments(),
   auditLog: [],
 };
+
+// ── Reducer ────────────────────────────────────────────────────────────────
 
 function complianceReducer(state, action) {
   switch (action.type) {
     case 'UPDATE_ASSESSMENT': {
       const { controlId, updates } = action.payload;
       const existing = state.assessments[controlId] || {};
-      const newAssessment = {
-        ...existing,
-        ...updates,
-        lastUpdated: new Date().toISOString(),
-      };
+      const newAssessment = { ...existing, ...updates, lastUpdated: new Date().toISOString() };
       const logEntry = {
         id: Date.now(),
         timestamp: new Date().toISOString(),
@@ -114,10 +87,7 @@ function complianceReducer(state, action) {
       };
       return {
         ...state,
-        assessments: {
-          ...state.assessments,
-          [controlId]: newAssessment,
-        },
+        assessments: { ...state.assessments, [controlId]: newAssessment },
         auditLog: [logEntry, ...state.auditLog].slice(0, 200),
       };
     }
@@ -135,8 +105,7 @@ function complianceReducer(state, action) {
       const updates = {};
       action.payload.forEach(({ controlId, assessment }) => {
         updates[controlId] = {
-          ...state.assessments[controlId],
-          ...assessment,
+          ...state.assessments[controlId], ...assessment,
           lastUpdated: new Date().toISOString(),
         };
       });
@@ -153,42 +122,56 @@ function complianceReducer(state, action) {
       return { ...state, assessments: { ...state.assessments, ...reset } };
     }
     case 'LOAD_STATE':
-      return { ...INITIAL_STATE, ...action.payload, assessments: { ...buildInitialAssessments(), ...action.payload.assessments } };
+      return {
+        ...INITIAL_STATE,
+        ...action.payload,
+        assessments: { ...buildInitialAssessments(), ...(action.payload.assessments || {}) },
+      };
     default:
       return state;
   }
 }
 
+// ── Local-storage cache key (offline fallback) ─────────────────────────────
+
 const STORAGE_KEY = 'ot_compliance_tracker_state';
 
+// ── Firestore document reference helper ───────────────────────────────────
+
+function complianceDocRef(uid) {
+  return doc(db, 'users', uid, 'data', 'complianceState');
+}
+
+// ── Provider ───────────────────────────────────────────────────────────────
+
 export function ComplianceProvider({ children }) {
-  const { isAuthenticated, isOffline } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const [state, dispatch] = useReducer(complianceReducer, INITIAL_STATE, (initial) => {
+    // Seed from localStorage while Firestore loads
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         return { ...initial, ...parsed, assessments: { ...buildInitialAssessments(), ...(parsed.assessments || {}) } };
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     return initial;
   });
 
-  // Migration flag: true when server has no state but localStorage does
   const [hasPendingMigration, setHasPendingMigration] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // On mount (after auth is ready): load state from server
+  // ── Load from Firestore when the user logs in ──────────────────────────
   useEffect(() => {
-    if (!isAuthenticated || isOffline) return;
+    if (!isAuthenticated || !user?.id) return;
 
-    apiGet('/api/state')
-      .then(serverState => {
-        const isEmpty = !serverState || Object.keys(serverState).length === 0;
-        if (isEmpty) {
-          // Check if localStorage has meaningful data to migrate
+    getDoc(complianceDocRef(user.id))
+      .then(snap => {
+        if (snap.exists()) {
+          dispatch({ type: 'LOAD_STATE', payload: snap.data() });
+        } else {
+          // Nothing in Firestore — check if localStorage has meaningful data
           try {
             const local = localStorage.getItem(STORAGE_KEY);
             if (local) {
@@ -198,95 +181,80 @@ export function ComplianceProvider({ children }) {
               if (hasData) setHasPendingMigration(true);
             }
           } catch { /* ignore */ }
-        } else {
-          // Hydrate from server — merges over INITIAL_STATE to fill any new controls
-          dispatch({ type: 'LOAD_STATE', payload: serverState });
         }
       })
-      .catch(err => {
-        if (!(err instanceof NetworkError)) {
-          console.warn('[ComplianceContext] Could not load server state:', err.message);
-        }
-      });
+      .catch(err => console.warn('[ComplianceContext] Firestore load failed:', err.message));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, isOffline]);
+  }, [user?.id, isAuthenticated]);
 
-  // Debounced sync: write to localStorage immediately, sync to server after 1s idle
+  // ── Debounced sync: localStorage immediately, Firestore after 1 s idle ──
   const syncTimer = useRef(null);
 
   useEffect(() => {
-    // Always keep localStorage up to date
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // ignore
-    }
+    // Always persist to localStorage for offline resilience
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
 
-    // Sync to server if authenticated and online
-    if (!isAuthenticated || isOffline) return;
+    if (!isAuthenticated || !user?.id) return;
 
     if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      apiPut('/api/state', state).catch(err => {
-        if (!(err instanceof NetworkError)) {
-          console.warn('[ComplianceContext] Server sync failed:', err.message);
-        }
-      });
+    syncTimer.current = setTimeout(async () => {
+      try {
+        setIsSyncing(true);
+        await setDoc(complianceDocRef(user.id), {
+          ...state,
+          _updatedAt: serverTimestamp(),
+        }, { merge: false });
+      } catch (err) {
+        console.warn('[ComplianceContext] Firestore sync failed:', err.message);
+      } finally {
+        setIsSyncing(false);
+      }
     }, 1000);
 
-    return () => {
-      if (syncTimer.current) clearTimeout(syncTimer.current);
-    };
-  }, [state, isAuthenticated, isOffline]);
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, isAuthenticated, user?.id]);
 
-  /** Import local compliance data to the server account (migration flow) */
+  /** Push local data to Firestore (migration flow) */
   async function importLocalData() {
-    try {
-      await apiPut('/api/state', state);
-      setHasPendingMigration(false);
-    } catch (err) {
-      console.warn('[ComplianceContext] Migration failed:', err.message);
-      throw err;
-    }
+    if (!user?.id) return;
+    await setDoc(complianceDocRef(user.id), { ...state, _updatedAt: serverTimestamp() }, { merge: false });
+    setHasPendingMigration(false);
   }
 
-  /** Wrap dispatch so individual assessment updates also hit the fast /assessment endpoint */
+  // ── Dispatch wrapper — no extra endpoint call needed with Firestore ────
   function dispatchWithSync(action) {
     dispatch(action);
-    if (action.type === 'UPDATE_ASSESSMENT' && isAuthenticated && !isOffline) {
-      const { controlId, updates } = action.payload;
-      apiPost('/api/state/assessment', { controlId, updates }).catch(() => {
-        // Silent fail — the debounced full sync will cover it
-      });
-    }
+    // Firestore sync happens automatically via the state-change useEffect above
   }
 
-  // ── Computed helpers ──────────────────────────────────────────────
+  // ── Computed helpers (unchanged from original) ────────────────────────
 
   function getFrameworkScore(framework) {
     const controls = Object.entries(state.assessments).filter(([, a]) => a.framework === framework);
-    if (controls.length === 0) return { score: 0, compliant: 0, total: 0, partial: 0, nonCompliant: 0, notAssessed: 0, na: 0 };
-    const compliant = controls.filter(([, a]) => a.status === 'COMPLIANT').length;
-    const partial = controls.filter(([, a]) => a.status === 'PARTIALLY_COMPLIANT').length;
+    if (controls.length === 0)
+      return { score: 0, compliant: 0, total: 0, partial: 0, nonCompliant: 0, notAssessed: 0, na: 0 };
+    const compliant    = controls.filter(([, a]) => a.status === 'COMPLIANT').length;
+    const partial      = controls.filter(([, a]) => a.status === 'PARTIALLY_COMPLIANT').length;
     const nonCompliant = controls.filter(([, a]) => a.status === 'NON_COMPLIANT').length;
-    const notAssessed = controls.filter(([, a]) => a.status === 'NOT_ASSESSED').length;
-    const na = controls.filter(([, a]) => a.status === 'NOT_APPLICABLE').length;
-    const applicable = controls.length - na;
-    const score = applicable > 0 ? Math.round(((compliant + partial * 0.5) / applicable) * 100) : 0;
+    const notAssessed  = controls.filter(([, a]) => a.status === 'NOT_ASSESSED').length;
+    const na           = controls.filter(([, a]) => a.status === 'NOT_APPLICABLE').length;
+    const applicable   = controls.length - na;
+    const score        = applicable > 0 ? Math.round(((compliant + partial * 0.5) / applicable) * 100) : 0;
     return { score, compliant, partial, nonCompliant, notAssessed, na, total: controls.length, applicable };
   }
 
   function getAescsfFunctionScore(functionId) {
     const fn = AESCSF_FUNCTIONS.find(f => f.id === functionId);
     if (!fn) return { score: 0, compliant: 0, total: 0 };
-    const controls = fn.categories.flatMap(c => c.controls);
+    const controls        = fn.categories.flatMap(c => c.controls);
     const profileControls = controls.filter(c => c[state.aescsfProfile.toLowerCase()]);
-    const assessed = profileControls.map(c => state.assessments[c.id]).filter(Boolean);
-    const compliant = assessed.filter(a => a.status === 'COMPLIANT').length;
-    const partial = assessed.filter(a => a.status === 'PARTIALLY_COMPLIANT').length;
-    const na = assessed.filter(a => a.status === 'NOT_APPLICABLE').length;
-    const applicable = assessed.length - na;
-    const score = applicable > 0 ? Math.round(((compliant + partial * 0.5) / applicable) * 100) : 0;
+    const assessed        = profileControls.map(c => state.assessments[c.id]).filter(Boolean);
+    const compliant       = assessed.filter(a => a.status === 'COMPLIANT').length;
+    const partial         = assessed.filter(a => a.status === 'PARTIALLY_COMPLIANT').length;
+    const na              = assessed.filter(a => a.status === 'NOT_APPLICABLE').length;
+    const applicable      = assessed.length - na;
+    const score           = applicable > 0 ? Math.round(((compliant + partial * 0.5) / applicable) * 100) : 0;
     return { score, compliant, partial, total: profileControls.length, applicable };
   }
 
@@ -299,33 +267,32 @@ export function ComplianceProvider({ children }) {
       return ctrlIndex <= targetIndex;
     });
     const compliant = inScopeControls.filter(c => state.assessments[c.id]?.status === 'COMPLIANT').length;
-    const partial = inScopeControls.filter(c => state.assessments[c.id]?.status === 'PARTIALLY_COMPLIANT').length;
-    const score = inScopeControls.length > 0 ? Math.round(((compliant + partial * 0.5) / inScopeControls.length) * 100) : 0;
+    const partial   = inScopeControls.filter(c => state.assessments[c.id]?.status === 'PARTIALLY_COMPLIANT').length;
+    const score     = inScopeControls.length > 0
+      ? Math.round(((compliant + partial * 0.5) / inScopeControls.length) * 100) : 0;
     return { score, compliant, partial, total: inScopeControls.length };
   }
 
-  /** Score for one E8 strategy within the target maturity level */
   function getE8StrategyScore(strategyId) {
     const strategy = E8_STRATEGIES.find(s => s.id === strategyId);
     if (!strategy) return { score: 0, compliant: 0, total: 0, achievedMaturity: 'ML0' };
-    const ML_ORDER = ['ML1', 'ML2', 'ML3'];
+    const ML_ORDER    = ['ML1', 'ML2', 'ML3'];
     const targetIndex = ML_ORDER.indexOf(state.e8TargetMaturity);
-    const inScope = strategy.controls.filter(c => ML_ORDER.indexOf(c.maturity) <= targetIndex);
-    const compliant = inScope.filter(c => state.assessments[c.id]?.status === 'COMPLIANT').length;
-    const partial = inScope.filter(c => state.assessments[c.id]?.status === 'PARTIALLY_COMPLIANT').length;
-    const na = inScope.filter(c => state.assessments[c.id]?.status === 'NOT_APPLICABLE').length;
-    const applicable = inScope.length - na;
-    const score = applicable > 0 ? Math.round(((compliant + partial * 0.5) / applicable) * 100) : 0;
+    const inScope     = strategy.controls.filter(c => ML_ORDER.indexOf(c.maturity) <= targetIndex);
+    const compliant   = inScope.filter(c => state.assessments[c.id]?.status === 'COMPLIANT').length;
+    const partial     = inScope.filter(c => state.assessments[c.id]?.status === 'PARTIALLY_COMPLIANT').length;
+    const na          = inScope.filter(c => state.assessments[c.id]?.status === 'NOT_APPLICABLE').length;
+    const applicable  = inScope.length - na;
+    const score       = applicable > 0 ? Math.round(((compliant + partial * 0.5) / applicable) * 100) : 0;
     const achievedMaturity = computeAchievedMaturity(strategy, state.assessments);
     return { score, compliant, partial, total: inScope.length, applicable, achievedMaturity };
   }
 
   function getOverallScore() {
-    const aescsf = getFrameworkScore('AESCSF');
-    const soci = getFrameworkScore('SOCI');
-    const asd = getFrameworkScore('ASD_FORTIFY');
-    const e8 = getFrameworkScore('ESSENTIAL_EIGHT');
-    return Math.round((aescsf.score + soci.score + asd.score + e8.score) / 4);
+    return Math.round(
+      (getFrameworkScore('AESCSF').score + getFrameworkScore('SOCI').score +
+       getFrameworkScore('ASD_FORTIFY').score + getFrameworkScore('ESSENTIAL_EIGHT').score) / 4
+    );
   }
 
   function getGaps(framework) {
@@ -362,7 +329,7 @@ export function ComplianceProvider({ children }) {
         });
       });
     } else if (framework === 'ESSENTIAL_EIGHT') {
-      const ML_ORDER = ['ML1', 'ML2', 'ML3'];
+      const ML_ORDER    = ['ML1', 'ML2', 'ML3'];
       const targetIndex = ML_ORDER.indexOf(state.e8TargetMaturity);
       E8_STRATEGIES.forEach(strategy => {
         strategy.controls
@@ -391,6 +358,7 @@ export function ComplianceProvider({ children }) {
     <ComplianceContext.Provider value={{
       state,
       dispatch: dispatchWithSync,
+      isSyncing,
       hasPendingMigration,
       importLocalData,
       dismissMigration: () => setHasPendingMigration(false),

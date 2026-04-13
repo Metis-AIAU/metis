@@ -1,4 +1,4 @@
-name: Auto PR to main
+name: Auto-merge to main
 
 on:
   push:
@@ -6,35 +6,30 @@ on:
       - claude/happy-hellman-v2
 
 jobs:
-  open-or-update-pr:
-    name: Ensure PR → main exists
+  merge-to-main:
+    name: Merge → main
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create or update PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge branch into main and push
         run: |
-          # Check if an open PR already exists for this branch
-          EXISTING=$(gh pr list \
-            --head claude/happy-hellman-v2 \
-            --base main \
-            --state open \
-            --json number \
-            --jq '.[0].number')
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if [ -n "$EXISTING" ]; then
-            echo "PR #$EXISTING already open — nothing to do"
-          else
-            gh pr create \
-              --title "feat: sync claude/happy-hellman-v2 → main" \
-              --body "Automated PR — merges the latest changes from \`claude/happy-hellman-v2\` into \`main\`." \
-              --head claude/happy-hellman-v2 \
-              --base main
-            echo "PR created"
-          fi
+          git fetch origin claude/happy-hellman-v2
+
+          # Fast-forward merge if possible, otherwise create a merge commit
+          git merge --no-edit origin/claude/happy-hellman-v2
+
+          git push origin main
+          echo "✓ main updated"

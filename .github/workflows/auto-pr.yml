@@ -1,0 +1,40 @@
+name: Auto PR to main
+
+on:
+  push:
+    branches:
+      - claude/happy-hellman-v2
+
+jobs:
+  open-or-update-pr:
+    name: Ensure PR → main exists
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create or update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if an open PR already exists for this branch
+          EXISTING=$(gh pr list \
+            --head claude/happy-hellman-v2 \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -n "$EXISTING" ]; then
+            echo "PR #$EXISTING already open — nothing to do"
+          else
+            gh pr create \
+              --title "feat: sync claude/happy-hellman-v2 → main" \
+              --body "Automated PR — merges the latest changes from \`claude/happy-hellman-v2\` into \`main\`." \
+              --head claude/happy-hellman-v2 \
+              --base main
+            echo "PR created"
+          fi

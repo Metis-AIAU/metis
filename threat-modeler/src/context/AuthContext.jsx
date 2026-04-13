@@ -140,7 +140,6 @@ export function AuthProvider({ children }) {
     user,
     isLoading,
     isOffline:       false,
-    isOffline:       false,   // Firebase SDK handles offline transparently
     isAuthenticated: !!user,
     login,
     register,

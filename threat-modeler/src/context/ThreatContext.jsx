@@ -4,10 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { sampleData } from '../data/sampleData';
 import { useAuth } from './AuthContext';
 import { useTeam } from './TeamContext';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { v4 as uuidv4 } from 'uuid';
-import { sampleData } from '../data/sampleData';
-import { useAuth } from './AuthContext';
 import { db } from '../firebase';
 
 const ThreatContext = createContext(null);
@@ -21,12 +17,6 @@ export const STRIDE_CATEGORIES = {
   I: { name: 'Information Disclosure', description: 'Exposing information to unauthorized users',     color: '#ef4444' },
   D: { name: 'Denial of Service',      description: 'Denying or degrading service to users',          color: '#ec4899' },
   E: { name: 'Elevation of Privilege', description: 'Gaining capabilities without authorization',     color: '#14b8a6' },
-  S: { name: 'Spoofing',                description: 'Pretending to be something or someone else',     color: '#8b5cf6' },
-  T: { name: 'Tampering',               description: 'Modifying data or code',                          color: '#f59e0b' },
-  R: { name: 'Repudiation',             description: 'Claiming to have not performed an action',        color: '#6366f1' },
-  I: { name: 'Information Disclosure',  description: 'Exposing information to unauthorized users',      color: '#ef4444' },
-  D: { name: 'Denial of Service',       description: 'Denying or degrading service to users',           color: '#ec4899' },
-  E: { name: 'Elevation of Privilege',  description: 'Gaining capabilities without authorization',      color: '#14b8a6' },
 };
 
 export const RISK_LEVELS = {
@@ -85,49 +75,6 @@ const initialState = {
 };
 
 // ── Reducer ────────────────────────────────────────────────────────────────
-
-};
-
-// ── Action types ───────────────────────────────────────────────────────────
-
-const ACTIONS = {
-  SET_LOADING:               'SET_LOADING',
-  LOAD_DATA:                 'LOAD_DATA',
-  SET_CURRENT_PROJECT:       'SET_CURRENT_PROJECT',
-  ADD_PROJECT:               'ADD_PROJECT',
-  ADD_PROJECT_WITH_ID:       'ADD_PROJECT_WITH_ID',
-  UPDATE_PROJECT:            'UPDATE_PROJECT',
-  DELETE_PROJECT:            'DELETE_PROJECT',
-  ADD_THREAT:                'ADD_THREAT',
-  UPDATE_THREAT:             'UPDATE_THREAT',
-  DELETE_THREAT:             'DELETE_THREAT',
-  ADD_CONTROL:               'ADD_CONTROL',
-  UPDATE_CONTROL:            'UPDATE_CONTROL',
-  DELETE_CONTROL:            'DELETE_CONTROL',
-  ADD_ASSET:                 'ADD_ASSET',
-  UPDATE_ASSET:              'UPDATE_ASSET',
-  DELETE_ASSET:              'DELETE_ASSET',
-  ADD_DATA_FLOW:             'ADD_DATA_FLOW',
-  UPDATE_DATA_FLOW:          'UPDATE_DATA_FLOW',
-  DELETE_DATA_FLOW:          'DELETE_DATA_FLOW',
-  LINK_CONTROL_TO_THREAT:    'LINK_CONTROL_TO_THREAT',
-  UNLINK_CONTROL_FROM_THREAT:'UNLINK_CONTROL_FROM_THREAT',
-  IMPORT_AI_RESULTS:         'IMPORT_AI_RESULTS',
-};
-
-// ── Initial state ──────────────────────────────────────────────────────────
-
-const initialState = {
-  projects:       [],
-  currentProject: null,
-  threats:        [],
-  controls:       [],
-  assets:         [],
-  dataFlows:      [],
-  isLoading:      true,
-};
-
-// ── Reducer (unchanged logic) ─────────────────────────────────────────────
 
 function threatReducer(state, action) {
   switch (action.type) {
@@ -301,12 +248,9 @@ function threatReducer(state, action) {
   }
 }
 
-// ── Doc-ref helpers ────────────────────────────────────────────────────────
+// ── Doc-ref helper ─────────────────────────────────────────────────────────
 
 function userDocRef(uid) {
-// ── Firestore document reference helper ───────────────────────────────────
-
-function threatDocRef(uid) {
   return doc(db, 'users', uid, 'data', 'threatData');
 }
 
@@ -325,7 +269,6 @@ export function ThreatProvider({ children }) {
   // ── Initial load ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
-      // Not logged in — use localStorage / sample data
       try {
         const saved = localStorage.getItem('threatModelingData');
         dispatch({ type: ACTIONS.LOAD_DATA, payload: saved ? JSON.parse(saved) : sampleData });
@@ -348,7 +291,6 @@ export function ThreatProvider({ children }) {
           const { _updatedAt, ...data } = snap.data();
           baseData = data;
         } else {
-          // First login — seed from localStorage or sample data
           try {
             const saved = localStorage.getItem('threatModelingData');
             baseData = saved ? JSON.parse(saved) : sampleData;
@@ -357,7 +299,6 @@ export function ThreatProvider({ children }) {
           }
         }
 
-        // If in a team, overlay the shared fields from the team doc
         if (team && teamThreatDocRef) {
           try {
             const teamSnap = await getDoc(teamThreatDocRef);
@@ -374,10 +315,7 @@ export function ThreatProvider({ children }) {
                 };
               }
               if (team.shareControls) {
-                baseData = {
-                  ...baseData,
-                  customControlTemplates: td.customControlTemplates || [],
-                };
+                baseData = { ...baseData, customControlTemplates: td.customControlTemplates || [] };
               }
             }
           } catch (err) {
@@ -411,15 +349,10 @@ export function ThreatProvider({ children }) {
         if (!snap.exists() || !hasSynced.current) return;
         if (Date.now() - lastTeamWrite.current < 2500) return;
 
-        const teamData = snap.data();
         isRemoteUpdate.current = true;
         dispatch({
           type: ACTIONS.MERGE_TEAM_DATA,
-          payload: {
-            teamData,
-            shareProjects: team.shareProjects,
-            shareControls: team.shareControls,
-          },
+          payload: { teamData: snap.data(), shareProjects: team.shareProjects, shareControls: team.shareControls },
         });
         setTimeout(() => { isRemoteUpdate.current = false; }, 100);
       },
@@ -434,24 +367,19 @@ export function ThreatProvider({ children }) {
   useEffect(() => {
     if (state.isLoading) return;
 
-    // Always keep localStorage fresh (instant, offline resilience)
     const { isLoading, ...dataToSave } = state;
     try {
       localStorage.setItem('threatModelingData', JSON.stringify(dataToSave));
     } catch { /* ignore */ }
 
     if (!isAuthenticated || !user?.id || !hasSynced.current) return;
-
-    // Don't write back a change that originated from the team snapshot
     if (isRemoteUpdate.current) return;
 
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
-      // 1. Always write to personal doc (full backup)
       setDoc(userDocRef(user.id), { ...dataToSave, _updatedAt: serverTimestamp() }, { merge: false })
         .catch(err => console.warn('[ThreatContext] personal doc sync failed:', err.message));
 
-      // 2. Write shared fields to team doc
       if (team && teamThreatDocRef) {
         const teamPayload = {};
         if (team.shareProjects) {
@@ -466,104 +394,25 @@ export function ThreatProvider({ children }) {
         }
         if (Object.keys(teamPayload).length > 0) {
           lastTeamWrite.current = Date.now();
-          setDoc(
-            teamThreatDocRef,
-            { ...teamPayload, _updatedAt: serverTimestamp() },
-            { merge: true }
-          ).catch(err => console.warn('[ThreatContext] team doc sync failed:', err.message));
+          setDoc(teamThreatDocRef, { ...teamPayload, _updatedAt: serverTimestamp() }, { merge: true })
+            .catch(err => console.warn('[ThreatContext] team doc sync failed:', err.message));
         }
       }
-  const [state, dispatch] = useReducer(threatReducer, initialState);
-  const syncTimer = useRef(null);
-  const hasSynced = useRef(false); // prevents overwriting Firestore with stale localStorage on first render
-
-  // ── Load from Firestore (or fall back to localStorage / sample data) ───
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) {
-      // Not logged in yet — load from localStorage or sample data locally
-      try {
-        const saved = localStorage.getItem('threatModelingData');
-        if (saved) {
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: JSON.parse(saved) });
-        } else {
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
-        }
-      } catch {
-        dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
-      }
-      return;
-    }
-
-    hasSynced.current = false;
-
-    getDoc(threatDocRef(user.id))
-      .then(snap => {
-        if (snap.exists()) {
-          const { _updatedAt, ...data } = snap.data();
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: data });
-        } else {
-          // First login — try to migrate localStorage data, otherwise use sample data
-          try {
-            const saved = localStorage.getItem('threatModelingData');
-            if (saved) {
-              dispatch({ type: ACTIONS.LOAD_DATA, payload: JSON.parse(saved) });
-            } else {
-              dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
-            }
-          } catch {
-            dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
-          }
-        }
-        hasSynced.current = true;
-      })
-      .catch(err => {
-        console.warn('[ThreatContext] Firestore load failed:', err.message);
-        // Fall back to localStorage
-        try {
-          const saved = localStorage.getItem('threatModelingData');
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: saved ? JSON.parse(saved) : sampleData });
-        } catch {
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
-        }
-        hasSynced.current = true;
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isAuthenticated]);
-
-  // ── Debounced sync: localStorage immediately, Firestore after 1.5 s ───
-  useEffect(() => {
-    if (state.isLoading) return;
-
-    // Always keep localStorage fresh
-    const { isLoading, ...dataToSave } = state;
-    try { localStorage.setItem('threatModelingData', JSON.stringify(dataToSave)); } catch { /* ignore */ }
-
-    if (!isAuthenticated || !user?.id || !hasSynced.current) return;
-
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-    syncTimer.current = setTimeout(() => {
-      setDoc(threatDocRef(user.id), { ...dataToSave, _updatedAt: serverTimestamp() }, { merge: false })
-        .catch(err => console.warn('[ThreatContext] Firestore sync failed:', err.message));
     }, 1500);
 
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, isAuthenticated, user?.id, team?.id, team?.shareProjects, team?.shareControls]);
-  }, [state, isAuthenticated, user?.id]);
 
   // ── Exposed actions ────────────────────────────────────────────────────
 
   const actions = {
     setCurrentProject: (project) => dispatch({ type: ACTIONS.SET_CURRENT_PROJECT, payload: project }),
 
-    addProject:       (project) => dispatch({ type: ACTIONS.ADD_PROJECT,        payload: project }),
+    addProject:       (project) => dispatch({ type: ACTIONS.ADD_PROJECT,         payload: project }),
     addProjectWithId: (project) => dispatch({ type: ACTIONS.ADD_PROJECT_WITH_ID, payload: project }),
-    updateProject:    (project) => dispatch({ type: ACTIONS.UPDATE_PROJECT,     payload: project }),
-    deleteProject:    (id)      => dispatch({ type: ACTIONS.DELETE_PROJECT,     payload: id }),
-    addProject:      (project)  => dispatch({ type: ACTIONS.ADD_PROJECT,      payload: project }),
-    addProjectWithId:(project)  => dispatch({ type: ACTIONS.ADD_PROJECT_WITH_ID, payload: project }),
-    updateProject:   (project)  => dispatch({ type: ACTIONS.UPDATE_PROJECT,   payload: project }),
-    deleteProject:   (id)       => dispatch({ type: ACTIONS.DELETE_PROJECT,   payload: id }),
+    updateProject:    (project) => dispatch({ type: ACTIONS.UPDATE_PROJECT,      payload: project }),
+    deleteProject:    (id)      => dispatch({ type: ACTIONS.DELETE_PROJECT,      payload: id }),
 
     addThreat:    (threat)  => dispatch({ type: ACTIONS.ADD_THREAT,    payload: threat }),
     updateThreat: (threat)  => dispatch({ type: ACTIONS.UPDATE_THREAT, payload: threat }),
@@ -582,8 +431,7 @@ export function ThreatProvider({ children }) {
     deleteDataFlow: (id)       => dispatch({ type: ACTIONS.DELETE_DATA_FLOW, payload: id }),
 
     linkControlToThreat: (controlId, threatId) =>
-    linkControlToThreat:   (controlId, threatId) =>
-      dispatch({ type: ACTIONS.LINK_CONTROL_TO_THREAT,    payload: { controlId, threatId } }),
+      dispatch({ type: ACTIONS.LINK_CONTROL_TO_THREAT,     payload: { controlId, threatId } }),
     unlinkControlFromThreat: (controlId, threatId) =>
       dispatch({ type: ACTIONS.UNLINK_CONTROL_FROM_THREAT, payload: { controlId, threatId } }),
 
@@ -605,7 +453,6 @@ export function ThreatProvider({ children }) {
   };
 
   // ── Selectors ──────────────────────────────────────────────────────────
-  // ── Selectors (unchanged logic) ───────────────────────────────────────
 
   const selectors = {
     getProjectThreats:   (projectId) => state.threats.filter(t => t.projectId === projectId),
@@ -615,8 +462,6 @@ export function ThreatProvider({ children }) {
 
     getThreatControls: (threatId)  => state.controls.filter(c => c.linkedThreats?.includes(threatId)),
     getControlThreats: (controlId) => {
-    getThreatControls:  (threatId)  => state.controls.filter(c => c.linkedThreats?.includes(threatId)),
-    getControlThreats:  (controlId) => {
       const control = state.controls.find(c => c.id === controlId);
       return state.threats.filter(t => control?.linkedThreats?.includes(t.id));
     },
@@ -638,14 +483,6 @@ export function ThreatProvider({ children }) {
         low:      t.filter(x => x.riskLevel === 'LOW').length,
         minimal:  t.filter(x => x.riskLevel === 'MINIMAL').length,
         total:    t.length,
-      const projectThreats = state.threats.filter(t => t.projectId === projectId);
-      return {
-        critical: projectThreats.filter(t => t.riskLevel === 'CRITICAL').length,
-        high:     projectThreats.filter(t => t.riskLevel === 'HIGH').length,
-        medium:   projectThreats.filter(t => t.riskLevel === 'MEDIUM').length,
-        low:      projectThreats.filter(t => t.riskLevel === 'LOW').length,
-        minimal:  projectThreats.filter(t => t.riskLevel === 'MINIMAL').length,
-        total:    projectThreats.length,
       };
     },
 
@@ -657,13 +494,6 @@ export function ThreatProvider({ children }) {
         implemented: c.filter(x => x.status === 'IMPLEMENTED').length,
         verified:    c.filter(x => x.status === 'VERIFIED').length,
         total:       c.length,
-      const projectControls = state.controls.filter(c => c.projectId === projectId);
-      return {
-        notStarted:  projectControls.filter(c => c.status === 'NOT_STARTED').length,
-        inProgress:  projectControls.filter(c => c.status === 'IN_PROGRESS').length,
-        implemented: projectControls.filter(c => c.status === 'IMPLEMENTED').length,
-        verified:    projectControls.filter(c => c.status === 'VERIFIED').length,
-        total:       projectControls.length,
       };
     },
 
@@ -682,11 +512,6 @@ export function ThreatProvider({ children }) {
         (c) => !c.aiGenerated && c.linkedThreats?.includes(threatId)
       );
       return customControls.some((c) => c.status === 'IMPLEMENTED' || c.status === 'VERIFIED');
-      const mitigatedThreats = projectThreats.filter(threat => {
-        const threatControls = state.controls.filter(c => c.linkedThreats?.includes(threat.id));
-        return threatControls.some(c => c.status === 'IMPLEMENTED' || c.status === 'VERIFIED');
-      });
-      return Math.round((mitigatedThreats.length / projectThreats.length) * 100);
     },
 
     calculateRiskScore: (likelihood, impact) => likelihood * impact,

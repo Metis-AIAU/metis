@@ -11,6 +11,9 @@ import { auth, db } from '../firebase';
 
 const AuthContext = createContext(null);
 
+// The one and only application administrator
+const APP_ADMIN_EMAIL = 'ariel.egber@gmail.com';
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /**
@@ -18,6 +21,7 @@ const AuthContext = createContext(null);
  * and merges it with the Firebase Auth object.
  */
 async function loadUserProfile(fbUser) {
+  const isAppAdmin = fbUser.email?.toLowerCase() === APP_ADMIN_EMAIL;
   try {
     const snap = await getDoc(doc(db, 'users', fbUser.uid));
     const profile = snap.exists() ? snap.data() : {};
@@ -28,6 +32,7 @@ async function loadUserProfile(fbUser) {
       accountType: profile.accountType || 'individual',
       teamId:      profile.teamId   || null,
       teamRole:    profile.teamRole || null,
+      isAppAdmin,
     };
   } catch {
     // Firestore unavailable — build minimal profile from Auth only
@@ -38,6 +43,7 @@ async function loadUserProfile(fbUser) {
       accountType: 'individual',
       teamId:      null,
       teamRole:    null,
+      isAppAdmin,
     };
   }
 }
@@ -101,17 +107,18 @@ export function AuthProvider({ children }) {
     return profile;
   }, []);
 
-  /** Create a new account — does NOT assign a team yet */
-  const register = useCallback(async (email, password, displayName) => {
+  /** Create a new account — accountType is 'individual' or 'team' */
+  const register = useCallback(async (email, password, displayName, accountType = 'individual') => {
     const { user: fbUser } = await createUserWithEmailAndPassword(auth, email, password);
 
     const username = (displayName && displayName.trim()) || email.split('@')[0];
+    const isAppAdmin = email?.toLowerCase() === APP_ADMIN_EMAIL;
 
     updateProfile(fbUser, { displayName: username }).catch(() => {});
     setDoc(doc(db, 'users', fbUser.uid), {
       email,
       username,
-      accountType: 'individual',
+      accountType,
       teamId:      null,
       teamRole:    null,
       createdAt:   serverTimestamp(),
@@ -122,9 +129,10 @@ export function AuthProvider({ children }) {
       id:          fbUser.uid,
       email,
       username,
-      accountType: 'individual',
+      accountType,
       teamId:      null,
       teamRole:    null,
+      isAppAdmin,
     };
     setUser(profile);
     return profile;

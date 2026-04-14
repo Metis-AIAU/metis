@@ -15,6 +15,7 @@ import Controls from './pages/Controls';
 import RiskMatrix from './pages/RiskMatrix';
 import DataFlows from './pages/DataFlows';
 import Settings from './pages/Settings';
+import TeamPage from './pages/Team';
 import ExecutiveView from './pages/ExecutiveView';
 import DiagramPage from './pages/Diagram';
 import AdvancedAnalysis from './pages/AdvancedAnalysis';
@@ -67,6 +68,7 @@ function AppRoutes() {
                 <Route path="/risk-matrix" element={<RiskMatrix />} />
                 <Route path="/data-flows" element={<DataFlows />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/team" element={<TeamPage />} />
                 {/* Compliance Tracker */}
                 <Route path="/compliance" element={<ComplianceDashboard />} />
                 <Route path="/compliance/aescsf" element={<AESCSFPage />} />

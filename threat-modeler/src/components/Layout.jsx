@@ -26,9 +26,11 @@ import {
   LogOut,
   WifiOff,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
+import { useTeam } from '../context/TeamContext';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -40,6 +42,7 @@ const navigation = [
   { name: 'Controls', href: '/controls', icon: Shield },
   { name: 'Risk Matrix', href: '/risk-matrix', icon: BarChart3 },
   { name: 'Data Flows', href: '/data-flows', icon: Network },
+  { name: 'Team', href: '/team', icon: Users },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -58,6 +61,7 @@ export default function Layout({ children }) {
   const location = useLocation();
   const { state } = useThreatContext();
   const { user, logout, isOffline } = useAuth();
+  const { team } = useTeam();
 
   const isActive = (href) => {
     if (href === '/') return location.pathname === '/';
@@ -222,6 +226,11 @@ export default function Layout({ children }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-800 truncate">{user?.username}</p>
+                  {team ? (
+                    <p className="text-xs text-purple-600 truncate mt-0.5">{team.name}</p>
+                  ) : user?.accountType === 'team' ? (
+                    <p className="text-xs text-gray-400 mt-0.5">No team yet</p>
+                  ) : null}
                   {isOffline && (
                     <div className="flex items-center gap-1 mt-0.5">
                       <WifiOff className="w-3 h-3 text-amber-500" />

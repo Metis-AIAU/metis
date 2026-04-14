@@ -52,7 +52,8 @@ export default function Settings() {
     setConfluenceConfig({});
   };
 
-  const isAdmin = isTeamOwner || isTeamAdmin || !team;
+  // Only ariel.egber@gmail.com is the application admin
+  const isAdmin = !!user?.isAppAdmin;
 
   const firebaseConfig = {
     apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            || '',
@@ -316,8 +317,8 @@ export default function Settings() {
           </div>
         </motion.div>
 
-        {/* Firebase & Firestore Configuration */}
-        {isAuthenticated && (
+        {/* Firebase & Firestore Configuration — admin only */}
+        {isAdmin && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

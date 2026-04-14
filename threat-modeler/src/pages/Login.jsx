@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Eye, EyeOff, UserPlus, LogIn, AlertCircle } from 'lucide-react';
+import { ShieldAlert, Eye, EyeOff, UserPlus, LogIn, AlertCircle, Users, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 function friendlyError(err) {
@@ -27,6 +27,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [accountType, setAccountType] = useState('individual'); // 'individual' | 'team'
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -37,6 +38,7 @@ export default function Login() {
     setError('');
     setPassword('');
     setConfirmPassword('');
+    setAccountType('individual');
   }
 
   async function handleSubmit(e) {
@@ -51,11 +53,13 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       if (isRegister) {
-        await register(email.trim(), password, displayName.trim());
+        await register(email.trim(), password, displayName.trim(), accountType);
+        // Team users go to the team setup page; individuals go to dashboard
+        navigate(accountType === 'team' ? '/team' : '/');
       } else {
         await login(email.trim(), password);
+        navigate('/');
       }
-      navigate('/');
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -192,6 +196,67 @@ export default function Login() {
                     autoComplete="new-password"
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Account type selection (register only) */}
+            <AnimatePresence>
+              {isRegister && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Account Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setAccountType('individual')}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left ${
+                        accountType === 'individual'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300 bg-white'
+                      }`}
+                    >
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                        accountType === 'individual' ? 'bg-blue-100' : 'bg-gray-100'
+                      }`}>
+                        <User className={`w-5 h-5 ${accountType === 'individual' ? 'text-blue-600' : 'text-gray-500'}`} />
+                      </div>
+                      <div>
+                        <p className={`text-sm font-semibold ${accountType === 'individual' ? 'text-blue-700' : 'text-gray-700'}`}>
+                          Individual
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">Personal workspace</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAccountType('team')}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left ${
+                        accountType === 'team'
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:border-gray-300 bg-white'
+                      }`}
+                    >
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                        accountType === 'team' ? 'bg-purple-100' : 'bg-gray-100'
+                      }`}>
+                        <Users className={`w-5 h-5 ${accountType === 'team' ? 'text-purple-600' : 'text-gray-500'}`} />
+                      </div>
+                      <div>
+                        <p className={`text-sm font-semibold ${accountType === 'team' ? 'text-purple-700' : 'text-gray-700'}`}>
+                          Team
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">Collaborate & share</p>
+                      </div>
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

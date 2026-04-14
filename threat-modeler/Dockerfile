@@ -1,5 +1,5 @@
 # ── Stage 1: Build the React frontend ────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN npm run build
 
 
 # ── Stage 2: Production server ────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
@@ -53,5 +53,5 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-# node v22+ has stable sqlite; v20 still needs the flag
+# node:sqlite requires Node 22+ (introduced in v22.5.0); --experimental-sqlite flag required until v22.15 / v23.4
 CMD ["node", "--experimental-sqlite", "server/index.js"]

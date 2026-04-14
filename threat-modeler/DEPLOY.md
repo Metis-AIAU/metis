@@ -22,12 +22,21 @@ Browser → Cloud Run (Express :8080)
 ```bash
 gcloud services enable \
   run.googleapis.com \
-  containerregistry.googleapis.com \
+  artifactregistry.googleapis.com \
   secretmanager.googleapis.com \
+  cloudbuild.googleapis.com \
   iam.googleapis.com
 ```
 
-### 2. Create secrets in Secret Manager
+### 2. Create the Artifact Registry repository
+```bash
+gcloud artifacts repositories create metis \
+  --repository-format=docker \
+  --location=australia-southeast1 \
+  --description="Metis threat modeler Docker images"
+```
+
+### 3. Create secrets in Secret Manager
 ```bash
 # Anthropic API key
 echo -n "sk-ant-..." | gcloud secrets create anthropic-api-key --data-file=-
@@ -36,7 +45,7 @@ echo -n "sk-ant-..." | gcloud secrets create anthropic-api-key --data-file=-
 openssl rand -hex 32 | gcloud secrets create jwt-secret --data-file=-
 ```
 
-### 3. Create a dedicated service account
+### 4. Create a dedicated service account
 ```bash
 gcloud iam service-accounts create metis-deployer \
   --display-name "Metis Cloud Run deployer"
@@ -52,7 +61,7 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member "serviceAccount:$SA" --role roles/secretmanager.secretAccessor
 ```
 
-### 4. Set up Workload Identity Federation (no long-lived keys)
+### 5. Set up Workload Identity Federation (no long-lived keys)
 ```bash
 # Create the pool
 gcloud iam workload-identity-pools create github-pool \

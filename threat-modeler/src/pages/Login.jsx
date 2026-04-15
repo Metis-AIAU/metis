@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Eye, EyeOff, UserPlus, LogIn, AlertCircle, Users, User } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Users, User, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 function friendlyError(err) {
@@ -17,6 +17,105 @@ function friendlyError(err) {
   return err.message || 'Something went wrong. Please try again.';
 }
 
+// ── Animated network background ─────────────────────────────────────────────
+const NODES = [
+  { x: 12, y: 18, r: 2.5, delay: 0 },
+  { x: 88, y: 12, r: 3,   delay: 1.2 },
+  { x: 75, y: 78, r: 2,   delay: 0.6 },
+  { x: 22, y: 82, r: 3.5, delay: 1.8 },
+  { x: 50, y: 50, r: 4,   delay: 0.3 },
+  { x: 35, y: 35, r: 2,   delay: 2.1 },
+  { x: 65, y: 28, r: 2.5, delay: 0.9 },
+  { x: 18, y: 55, r: 2,   delay: 1.5 },
+  { x: 82, y: 55, r: 3,   delay: 0.4 },
+  { x: 48, y: 88, r: 2,   delay: 1.1 },
+  { x: 8,  y: 40, r: 1.5, delay: 2.4 },
+  { x: 92, y: 72, r: 2,   delay: 0.7 },
+];
+
+const EDGES = [
+  [0, 4], [1, 4], [2, 4], [3, 4], [5, 4],
+  [6, 4], [7, 4], [8, 4], [9, 4],
+  [0, 7], [1, 6], [2, 8], [3, 9],
+  [5, 0], [6, 1], [10, 7], [11, 8],
+];
+
+function NetworkBackground() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* Deep gradient base */}
+      <div className="absolute inset-0" style={{
+        background: 'radial-gradient(ellipse 80% 80% at 50% -10%, rgba(14,165,233,0.12) 0%, transparent 60%), linear-gradient(180deg, #050812 0%, #07091c 50%, #060a1a 100%)'
+      }} />
+
+      {/* Subtle grid */}
+      <div className="absolute inset-0 opacity-[0.04]" style={{
+        backgroundImage: 'linear-gradient(rgba(34,211,238,1) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,1) 1px, transparent 1px)',
+        backgroundSize: '60px 60px',
+      }} />
+
+      {/* Network SVG */}
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="0.4" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {/* Edges */}
+        {EDGES.map(([a, b], i) => (
+          <motion.line
+            key={i}
+            x1={NODES[a].x} y1={NODES[a].y}
+            x2={NODES[b].x} y2={NODES[b].y}
+            stroke="rgba(34,211,238,0.18)"
+            strokeWidth="0.15"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: [0, 1, 1, 0], opacity: [0, 0.4, 0.4, 0] }}
+            transition={{
+              duration: 6,
+              delay: i * 0.35,
+              repeat: Infinity,
+              repeatDelay: 2,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+
+        {/* Nodes */}
+        {NODES.map((node, i) => (
+          <motion.circle
+            key={i}
+            cx={node.x} cy={node.y} r={node.r}
+            fill="rgba(34,211,238,0.6)"
+            filter="url(#glow)"
+            animate={{
+              opacity: [0.3, 0.8, 0.3],
+              r: [node.r * 0.9, node.r * 1.15, node.r * 0.9],
+            }}
+            transition={{
+              duration: 3 + node.delay,
+              delay: node.delay,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </svg>
+
+      {/* Scan line */}
+      <motion.div
+        className="absolute left-0 right-0 h-px pointer-events-none"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.2), transparent)' }}
+        animate={{ top: ['0%', '100%'] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+      />
+    </div>
+  );
+}
+
+// ── Login form ──────────────────────────────────────────────────────────────
 export default function Login() {
   const { login, register } = useAuth();
   const navigate = useNavigate();
@@ -27,7 +126,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [accountType, setAccountType] = useState('individual'); // 'individual' | 'team'
+  const [accountType, setAccountType] = useState('individual');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,17 +143,14 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-
     if (isRegister && password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
-
     setIsSubmitting(true);
     try {
       if (isRegister) {
         await register(email.trim(), password, displayName.trim(), accountType);
-        // Team users go to the team setup page; individuals go to dashboard
         navigate(accountType === 'team' ? '/team' : '/');
       } else {
         await login(email.trim(), password);
@@ -67,83 +163,136 @@ export default function Login() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg mb-4">
-            <ShieldAlert className="w-9 h-9 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Metis</h1>
-          <p className="text-sm text-gray-500 mt-1">OT Cybersecurity Compliance Tracker</p>
-        </div>
+  const inputStyle = {
+    width: '100%',
+    padding: '0.65rem 1rem',
+    borderRadius: '10px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.05)',
+    color: '#f1f5f9',
+    fontFamily: 'var(--font-body)',
+    fontSize: '0.875rem',
+    outline: 'none',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+  };
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-          {/* Tab switcher */}
-          <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
-            <button
-              type="button"
-              onClick={() => setMode('login')}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                !isRegister ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('register')}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                isRegister ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Create Account
-            </button>
+  const focusStyle = {
+    borderColor: 'rgba(34,211,238,0.5)',
+    boxShadow: '0 0 0 3px rgba(34,211,238,0.1)',
+  };
+
+  const labelStyle = {
+    display: 'block',
+    fontSize: '0.7rem',
+    fontWeight: 600,
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: '#64748b',
+    marginBottom: '0.4rem',
+    fontFamily: 'var(--font-mono)',
+  };
+
+  return (
+    <div className="min-h-screen relative flex items-center justify-center p-4"
+      style={{ background: '#07091c' }}>
+      <NetworkBackground />
+
+      {/* Brand mark — top left */}
+      <div className="absolute top-8 left-8 flex items-center gap-3 z-10">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #0ea5e9, #6366f1)', boxShadow: '0 0 16px rgba(14,165,233,0.4)' }}>
+          <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5 text-white" stroke="currentColor" strokeWidth="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+        </div>
+        <div>
+          <p className="text-white font-bold text-sm leading-none"
+            style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.03em' }}>METIS</p>
+          <p className="text-[9px] font-medium tracking-[0.18em] mt-0.5"
+            style={{ color: '#22d3ee', fontFamily: 'var(--font-mono)' }}>OT SECURITY</p>
+        </div>
+      </div>
+
+      {/* Framework badges — bottom */}
+      <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-4 z-10">
+        {['AESCSF', 'SOCI', 'ASD FORTIFY', 'ESSENTIAL EIGHT'].map(f => (
+          <span key={f} className="text-[9px] font-semibold tracking-widest"
+            style={{ color: 'rgba(100,116,139,0.6)', fontFamily: 'var(--font-mono)' }}>
+            {f}
+          </span>
+        ))}
+      </div>
+
+      {/* Auth card */}
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+        className="relative z-10 w-full max-w-sm"
+      >
+        <div style={{
+          background: 'rgba(10,14,35,0.9)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '20px',
+          padding: '2rem',
+          backdropFilter: 'blur(24px)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,211,238,0.05)',
+        }}>
+
+          {/* Heading */}
+          <div className="mb-6 text-center">
+            <h2 className="text-2xl font-bold text-white mb-1"
+              style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.04em' }}>
+              {isRegister ? 'Create Account' : 'Welcome back'}
+            </h2>
+            <p className="text-xs" style={{ color: '#475569', fontFamily: 'var(--font-mono)' }}>
+              {isRegister ? 'Start securing your infrastructure' : 'Sign in to your workspace'}
+            </p>
+          </div>
+
+          {/* Mode toggle */}
+          <div className="flex rounded-xl p-0.5 mb-6"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {['login', 'register'].map(m => (
+              <button key={m} type="button" onClick={() => { setMode(m); setError(''); }}
+                className="flex-1 py-2 rounded-[10px] text-xs font-semibold transition-all"
+                style={mode === m
+                  ? { background: 'rgba(255,255,255,0.08)', color: '#f1f5f9', fontFamily: 'var(--font-body)' }
+                  : { color: '#475569', fontFamily: 'var(--font-body)' }}>
+                {m === 'login' ? 'Sign In' : 'Create Account'}
+              </button>
+            ))}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Email
-              </label>
+              <label style={labelStyle}>Email</label>
               <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                autoFocus
-                autoComplete="email"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com" required autoFocus autoComplete="email"
+                style={inputStyle}
+                onFocus={e => Object.assign(e.target.style, focusStyle)}
+                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.boxShadow = 'none'; }}
               />
             </div>
 
-            {/* Display name (register only) */}
+            {/* Display name — register only */}
             <AnimatePresence>
               {isRegister && (
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   style={{ overflow: 'hidden' }}
                 >
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Display Name
-                  </label>
+                  <label style={labelStyle}>Display Name</label>
                   <input
-                    type="text"
-                    value={displayName}
-                    onChange={e => setDisplayName(e.target.value)}
-                    placeholder="Your name"
-                    autoComplete="name"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
+                    placeholder="Your name" autoComplete="name"
+                    style={inputStyle}
+                    onFocus={e => Object.assign(e.target.style, focusStyle)}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.boxShadow = 'none'; }}
                   />
                 </motion.div>
               )}
@@ -151,31 +300,29 @@ export default function Login() {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Password
-              </label>
+              <label style={labelStyle}>Password</label>
               <div className="relative">
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
+                  type={showPassword ? 'text' : 'password'} value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder={isRegister ? 'At least 6 characters' : 'Enter your password'}
-                  required
-                  autoComplete={isRegister ? 'new-password' : 'current-password'}
-                  className="w-full px-4 py-2.5 pr-11 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  placeholder={isRegister ? 'At least 6 characters' : '••••••••'}
+                  required autoComplete={isRegister ? 'new-password' : 'current-password'}
+                  style={{ ...inputStyle, paddingRight: '2.75rem' }}
+                  onFocus={e => Object.assign(e.target.style, { ...focusStyle, paddingRight: '2.75rem' })}
+                  onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.boxShadow = 'none'; }}
                 />
-                <button
-                  type="button"
+                <button type="button" tabIndex={-1}
                   onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  tabIndex={-1}
-                >
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: '#475569' }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#94a3b8'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#475569'}>
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Confirm password (register only) */}
+            {/* Confirm password — register only */}
             <AnimatePresence>
               {isRegister && (
                 <motion.div
@@ -184,23 +331,20 @@ export default function Login() {
                   exit={{ opacity: 0, height: 0 }}
                   style={{ overflow: 'hidden' }}
                 >
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Confirm Password
-                  </label>
+                  <label style={labelStyle}>Confirm Password</label>
                   <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirmPassword}
+                    type={showPassword ? 'text' : 'password'} value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter your password"
-                    required={isRegister}
-                    autoComplete="new-password"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    placeholder="Re-enter password" required={isRegister} autoComplete="new-password"
+                    style={inputStyle}
+                    onFocus={e => Object.assign(e.target.style, focusStyle)}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.boxShadow = 'none'; }}
                   />
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Account type selection (register only) */}
+            {/* Account type — register only */}
             <AnimatePresence>
               {isRegister && (
                 <motion.div
@@ -209,106 +353,79 @@ export default function Login() {
                   exit={{ opacity: 0, height: 0 }}
                   style={{ overflow: 'hidden' }}
                 >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Account Type
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setAccountType('individual')}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left ${
-                        accountType === 'individual'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                    >
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                        accountType === 'individual' ? 'bg-blue-100' : 'bg-gray-100'
-                      }`}>
-                        <User className={`w-5 h-5 ${accountType === 'individual' ? 'text-blue-600' : 'text-gray-500'}`} />
-                      </div>
-                      <div>
-                        <p className={`text-sm font-semibold ${accountType === 'individual' ? 'text-blue-700' : 'text-gray-700'}`}>
-                          Individual
+                  <label style={labelStyle}>Account Type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { val: 'individual', label: 'Individual', sub: 'Personal workspace', Icon: User, color: '#22d3ee' },
+                      { val: 'team', label: 'Team', sub: 'Collaborate & share', Icon: Users, color: '#a78bfa' },
+                    ].map(({ val, label, sub, Icon, color }) => (
+                      <button key={val} type="button" onClick={() => setAccountType(val)}
+                        className="flex flex-col items-start p-3 rounded-xl transition-all text-left"
+                        style={accountType === val
+                          ? { border: `1px solid ${color}40`, background: `${color}0d` }
+                          : { border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
+                        <Icon className="w-4 h-4 mb-1.5" style={{ color: accountType === val ? color : '#475569' }} />
+                        <p className="text-xs font-semibold"
+                          style={{ color: accountType === val ? color : '#94a3b8', fontFamily: 'var(--font-display)' }}>
+                          {label}
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5">Personal workspace</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setAccountType('team')}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left ${
-                        accountType === 'team'
-                          ? 'border-purple-500 bg-purple-50'
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                    >
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                        accountType === 'team' ? 'bg-purple-100' : 'bg-gray-100'
-                      }`}>
-                        <Users className={`w-5 h-5 ${accountType === 'team' ? 'text-purple-600' : 'text-gray-500'}`} />
-                      </div>
-                      <div>
-                        <p className={`text-sm font-semibold ${accountType === 'team' ? 'text-purple-700' : 'text-gray-700'}`}>
-                          Team
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">Collaborate & share</p>
-                      </div>
-                    </button>
+                        <p className="text-[10px] mt-0.5" style={{ color: '#475569', fontFamily: 'var(--font-mono)' }}>{sub}</p>
+                      </button>
+                    ))}
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Error message */}
+            {/* Error */}
             <AnimatePresence>
               {error && (
                 <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
-                >
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{error}</span>
+                  initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-start gap-2.5 p-3 rounded-xl text-xs"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span style={{ fontFamily: 'var(--font-body)' }}>{error}</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Submit */}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors text-sm"
-            >
+            <motion.button
+              type="submit" disabled={isSubmitting}
+              whileHover={{ scale: isSubmitting ? 1 : 1.01 }}
+              whileTap={{ scale: isSubmitting ? 1 : 0.98 }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-50"
+              style={{
+                background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
+                color: '#ffffff',
+                fontFamily: 'var(--font-body)',
+                boxShadow: '0 4px 20px rgba(14,165,233,0.3)',
+              }}>
               {isSubmitting ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : isRegister ? (
-                <UserPlus className="w-4 h-4" />
+                <span className="w-4 h-4 border-2 rounded-full animate-spin"
+                  style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} />
               ) : (
-                <LogIn className="w-4 h-4" />
+                <>
+                  {isRegister ? 'Create Account' : 'Sign In'}
+                  <ArrowRight className="w-4 h-4" />
+                </>
               )}
-              {isSubmitting ? 'Please wait…' : isRegister ? 'Create Account' : 'Sign In'}
-            </button>
+            </motion.button>
           </form>
 
-          {/* Toggle mode link */}
-          <p className="text-center text-sm text-gray-500 mt-5">
+          {/* Toggle */}
+          <p className="text-center text-xs mt-5" style={{ color: '#475569', fontFamily: 'var(--font-body)' }}>
             {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <button
-              type="button"
-              onClick={toggleMode}
-              className="text-blue-600 hover:text-blue-700 font-medium"
-            >
+            <button type="button" onClick={toggleMode}
+              className="font-semibold transition-colors"
+              style={{ color: '#22d3ee' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#67e8f9'}
+              onMouseLeave={e => e.currentTarget.style.color = '#22d3ee'}>
               {isRegister ? 'Sign in' : 'Create one'}
             </button>
           </p>
         </div>
-
-        <p className="text-center text-xs text-gray-400 mt-4">
-          Metis · AESCSF · SOCI · ASD Fortify · Essential Eight
-        </p>
       </motion.div>
     </div>
   );

@@ -860,15 +860,15 @@ function Stage1({ form, setForm }) {
 
 function Stage2({ diagramData, onDiagramChange }) {
   return (
-    <div className="space-y-4">
-      <div>
+    <div className="flex flex-col">
+      <div className="px-8 pt-7 pb-4">
         <h2 className="text-2xl font-bold text-gray-900">System Diagram</h2>
-        <p className="text-gray-500 mt-1">
-          Drag components from the palette onto the canvas and connect them with arrows.
+        <p className="text-gray-500 mt-1 text-sm">
+          Drag components from the palette onto the canvas, connect them with arrows.
           The diagram components will be used to tailor the AI threat analysis.
         </p>
       </div>
-      <div className="rounded-xl overflow-hidden border border-gray-200" style={{ height: 'calc(100vh - 260px)', minHeight: 600 }}>
+      <div style={{ height: 'calc(100vh - 320px)', minHeight: 580 }}>
         <ThreatModelCanvas value={diagramData} onChange={onDiagramChange} />
       </div>
     </div>
@@ -1919,9 +1919,16 @@ function Stage4({ project, form, diagramData, onSave }) {
         </div>
       )}
 
-      {/* Save */}
-      <div className="pt-4 border-t border-gray-200">
-        <button onClick={() => onSave(results, userControls)} className="btn-primary w-full text-base py-3">
+      {/* Save / Re-run */}
+      <div className="pt-4 border-t border-gray-200 flex gap-3">
+        <button
+          onClick={() => { setResults(null); setExpandedThreat(null); runAnalysis(); }}
+          className="btn-secondary py-3 px-5 flex items-center gap-2"
+        >
+          <Loader2 className="w-4 h-4" />
+          Re-Run Analysis
+        </button>
+        <button onClick={() => onSave(results, userControls)} className="btn-primary flex-1 text-base py-3">
           <CheckCircle2 className="w-5 h-5 mr-2" />
           Save Project &amp; View Results
         </button>
@@ -2097,8 +2104,8 @@ export default function NewProject() {
         {/* Stepper */}
         <StepIndicator stages={STAGES} current={stage} />
 
-        {/* Content card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+        {/* Content card — no padding on stage 2 so canvas is flush edge-to-edge */}
+        <div className={`bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden ${stage !== 2 ? 'p-8' : ''}`}>
           <AnimatePresence mode="wait">
             <motion.div key={stage}
               initial={{ opacity: 0, x: 16 }}

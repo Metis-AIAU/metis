@@ -187,13 +187,12 @@ export default function Layout({ children }) {
           {/* Compliance divider */}
           <div className="py-3 px-2">
             {sidebarOpen ? (
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                <span className="text-[9px] font-bold tracking-[0.2em] uppercase"
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-[11px] font-bold tracking-[0.15em] uppercase"
                   style={{ color: '#34d399', fontFamily: 'var(--font-mono)' }}>
                   Compliance
                 </span>
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
               </div>
             ) : (
               <div className="h-px mx-1" style={{ background: 'rgba(255,255,255,0.06)' }} />

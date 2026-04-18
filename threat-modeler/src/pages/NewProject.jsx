@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
@@ -868,7 +868,7 @@ function Stage2({ diagramData, onDiagramChange }) {
           The diagram components will be used to tailor the AI threat analysis.
         </p>
       </div>
-      <div className="h-[520px] rounded-xl overflow-hidden border border-gray-200">
+      <div className="rounded-xl overflow-hidden border border-gray-200" style={{ height: 'calc(100vh - 260px)', minHeight: 600 }}>
         <ThreatModelCanvas value={diagramData} onChange={onDiagramChange} />
       </div>
     </div>
@@ -1019,6 +1019,7 @@ function Stage4({ project, form, diagramData, onSave }) {
   const [addingFor, setAddingFor]       = useState(null);
   const [newCtrl, setNewCtrl]           = useState({ name: '', type: 'Preventive', effectiveness: 'MEDIUM' });
   const [activeTab, setActiveTab]       = useState('threats');
+  const [expandedThreat, setExpandedThreat] = useState(null);
 
   useEffect(() => {
     if (status === 'idle' && project?.id) runAnalysis();
@@ -1285,7 +1286,22 @@ function Stage4({ project, form, diagramData, onSave }) {
 
       {/* ── Threat Table ───────────────────────────────────────────────────── */}
       {activeTab === 'threats' && (
-        <div>
+        <div className="space-y-3">
+          {/* Simulation mode banner */}
+          {threats.length > 0 && threats[0]?.aiModel === 'simulation' && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Simulation mode — not using Claude AI</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  The backend is not running or <code className="font-mono bg-amber-100 px-1 rounded">ANTHROPIC_API_KEY</code> is not set.
+                  Threats come from a local template database and do not reflect your specific project context.
+                  Start the server with the API key for real contextual analysis.
+                </p>
+              </div>
+            </div>
+          )}
+
           {threats.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -1300,23 +1316,29 @@ function Stage4({ project, form, diagramData, onSave }) {
                     <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">STRIDE</th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Threat</th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Initial Risk</th>
-                    <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Recommended Mitigation</th>
+                    <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Top Mitigation</th>
                     <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Controls</th>
                     <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Residual Risk</th>
                   </tr>
                 </thead>
                 <tbody>
                   {threats.map((threat, idx) => {
-                    const controls = userControls[threat.id] || [];
-                    const residual = getResidual(threat);
-                    const isAdding = addingFor === threat.id;
-                    const recs     = threat.recommendations || [];
-                    const topRec   = recs[0];
+                    const controls   = userControls[threat.id] || [];
+                    const residual   = getResidual(threat);
+                    const isAdding   = addingFor === threat.id;
+                    const isExpanded = expandedThreat === threat.id;
+                    const recs       = threat.recommendations || [];
+                    const topRec     = typeof recs[0] === 'string' ? recs[0] : recs[0]?.name;
 
                     return (
-                      <>
-                        <tr key={threat.id}
-                          className={`border-b border-gray-100 transition-colors ${isAdding ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                      <React.Fragment key={threat.id}>
+                        {/* ── Main row ── */}
+                        <tr
+                          onClick={() => setExpandedThreat(isExpanded ? null : threat.id)}
+                          className={`border-b border-gray-100 transition-colors cursor-pointer ${
+                            isAdding ? 'bg-green-50' : isExpanded ? 'bg-blue-50/60' : 'hover:bg-gray-50'
+                          }`}
+                        >
                           {/* # */}
                           <td className="px-3 py-3 text-gray-400 font-mono text-xs align-top">{idx + 1}</td>
 
@@ -1333,26 +1355,30 @@ function Stage4({ project, form, diagramData, onSave }) {
                             </div>
                           </td>
 
-                          {/* Threat name + description */}
+                          {/* Threat name + description + chevron */}
                           <td className="px-3 py-3 align-top max-w-xs">
-                            <p className="font-semibold text-gray-900 text-sm leading-snug">{threat.name}</p>
-                            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed line-clamp-2">{threat.description}</p>
-                            {/* Applied controls chips */}
-                            {controls.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {controls.map(ctrl => (
-                                  <div key={ctrl.id}
-                                    className="flex items-center gap-1 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 text-xs text-green-700">
-                                    <Shield className="w-2.5 h-2.5" />
-                                    <span className="font-medium truncate max-w-[80px]">{ctrl.name}</span>
-                                    <button onClick={() => removeControl(threat.id, ctrl.id)}
-                                      className="hover:text-red-500 transition-colors">
-                                      <X className="w-2.5 h-2.5" />
-                                    </button>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-900 text-sm leading-snug">{threat.name}</p>
+                                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed line-clamp-1">{threat.description}</p>
+                                {controls.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {controls.map(ctrl => (
+                                      <div key={ctrl.id}
+                                        className="flex items-center gap-1 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 text-xs text-green-700">
+                                        <Shield className="w-2.5 h-2.5" />
+                                        <span className="font-medium truncate max-w-[80px]">{ctrl.name}</span>
+                                        <button onClick={e => { e.stopPropagation(); removeControl(threat.id, ctrl.id); }}
+                                          className="hover:text-red-500 transition-colors">
+                                          <X className="w-2.5 h-2.5" />
+                                        </button>
+                                      </div>
+                                    ))}
                                   </div>
-                                ))}
+                                )}
                               </div>
-                            )}
+                              <ChevronRight className={`w-4 h-4 flex-shrink-0 mt-0.5 transition-transform text-gray-300 ${isExpanded ? 'rotate-90 text-blue-500' : ''}`} />
+                            </div>
                           </td>
 
                           {/* Initial risk */}
@@ -1365,14 +1391,13 @@ function Stage4({ project, form, diagramData, onSave }) {
                             </div>
                           </td>
 
-                          {/* Recommended mitigation */}
+                          {/* Top mitigation */}
                           <td className="px-3 py-3 align-top max-w-xs">
                             {topRec ? (
                               <div>
-                                <p className="text-xs font-semibold text-blue-700">{topRec.name}</p>
-                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{topRec.description}</p>
+                                <p className="text-xs text-gray-700 line-clamp-2">{topRec}</p>
                                 {recs.length > 1 && (
-                                  <p className="text-xs text-blue-500 mt-0.5">+{recs.length - 1} more</p>
+                                  <p className="text-xs text-blue-500 mt-0.5">+{recs.length - 1} more — click to expand</p>
                                 )}
                               </div>
                             ) : (
@@ -1381,7 +1406,7 @@ function Stage4({ project, form, diagramData, onSave }) {
                           </td>
 
                           {/* Controls button */}
-                          <td className="px-3 py-3 align-top text-center">
+                          <td className="px-3 py-3 align-top text-center" onClick={e => e.stopPropagation()}>
                             <button onClick={() => setAddingFor(isAdding ? null : threat.id)}
                               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                                 isAdding
@@ -1405,15 +1430,111 @@ function Stage4({ project, form, diagramData, onSave }) {
                                 <RiskBadge level={residual.level} />
                                 <span className="text-xs text-gray-400 font-mono">score {residual.score}</span>
                               </div>
+                            ) : threat.residualRiskLevel ? (
+                              <div className="flex flex-col gap-1">
+                                <RiskBadge level={threat.residualRiskLevel} />
+                                <span className="text-xs text-gray-400 font-mono">score {threat.residualRiskScore}</span>
+                              </div>
                             ) : (
-                              <span className="text-xs text-gray-400">No controls</span>
+                              <span className="text-xs text-gray-400">—</span>
                             )}
                           </td>
                         </tr>
 
-                        {/* Inline control-add row */}
+                        {/* ── Expanded detail row ── */}
+                        {isExpanded && (
+                          <tr className="bg-blue-50/40 border-b border-blue-100">
+                            <td colSpan={7} className="px-5 py-5">
+                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                                {/* Risk breakdown */}
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Risk Breakdown</p>
+                                  <div className="flex items-stretch gap-2 mb-4">
+                                    {[
+                                      { label: 'Likelihood', val: threat.likelihood },
+                                      { label: '×', val: null },
+                                      { label: 'Impact', val: threat.impact },
+                                      { label: '=', val: null },
+                                      { label: threat.riskLevel, val: threat.riskScore, isFinal: true },
+                                    ].map((item, i) =>
+                                      item.val === null ? (
+                                        <div key={i} className="flex items-center text-gray-400 font-bold text-lg">{item.label}</div>
+                                      ) : (
+                                        <div key={i} className={`flex-1 flex flex-col items-center justify-center p-2 rounded-xl border text-center ${item.isFinal ? '' : 'bg-white border-gray-200'}`}
+                                          style={item.isFinal ? { background: RISK_BG[threat.riskLevel], borderColor: RISK_COLORS[threat.riskLevel] } : {}}>
+                                          <span className="text-2xl font-black" style={{ color: item.isFinal ? RISK_COLORS[threat.riskLevel] : '#374151' }}>{item.val}</span>
+                                          <span className="text-[9px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: item.isFinal ? RISK_COLORS[threat.riskLevel] : '#9ca3af' }}>{item.label}</span>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                  {/* Affected components */}
+                                  {(threat.affectedComponents || []).length > 0 && (
+                                    <div className="mb-3">
+                                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Affected Components</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {threat.affectedComponents.map((c, i) => (
+                                          <span key={i} className="text-xs px-2 py-0.5 bg-white rounded-full border border-gray-200 text-gray-600">{c}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Residual risk after AI mitigations */}
+                                  {(threat.residualRiskScore || residual) && (
+                                    <div className="p-3 rounded-xl border border-green-200 bg-green-50">
+                                      <p className="text-[10px] font-bold uppercase tracking-widest text-green-700 mb-1">Residual Risk (after mitigations)</p>
+                                      <div className="flex items-center gap-2">
+                                        <RiskBadge level={residual ? residual.level : threat.residualRiskLevel} />
+                                        <span className="text-xs text-green-700 font-mono">score {residual ? residual.score : threat.residualRiskScore}</span>
+                                      </div>
+                                      {threat.residualRationale && (
+                                        <p className="text-xs text-green-700 mt-2 leading-relaxed">{threat.residualRationale}</p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Description + Rationale */}
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Description</p>
+                                  <p className="text-sm text-gray-700 leading-relaxed mb-4">{threat.description}</p>
+                                  {threat.rationale && (
+                                    <>
+                                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Why This Risk Level?</p>
+                                      <p className="text-sm text-gray-700 leading-relaxed">{threat.rationale}</p>
+                                    </>
+                                  )}
+                                </div>
+
+                                {/* Recommendations */}
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Recommendations ({recs.length})</p>
+                                  <ol className="space-y-2.5">
+                                    {recs.map((rec, i) => {
+                                      const name = typeof rec === 'string' ? rec : rec.name;
+                                      const desc = typeof rec === 'object' ? rec.description : null;
+                                      return (
+                                        <li key={i} className="flex gap-2.5">
+                                          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold mt-0.5">{i + 1}</span>
+                                          <div>
+                                            <p className="text-sm font-semibold text-gray-800 leading-snug">{name}</p>
+                                            {desc && <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{desc}</p>}
+                                          </div>
+                                        </li>
+                                      );
+                                    })}
+                                  </ol>
+                                </div>
+
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* ── Add-control row ── */}
                         {isAdding && (
-                          <tr key={`${threat.id}-ctrl`} className="bg-green-50 border-b border-green-100">
+                          <tr className="bg-green-50 border-b border-green-100">
                             <td colSpan={7} className="px-4 py-3">
                               <p className="text-xs font-semibold text-green-800 uppercase tracking-wide mb-2">
                                 Add Control for: {threat.name}
@@ -1446,7 +1567,7 @@ function Stage4({ project, form, diagramData, onSave }) {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

@@ -1079,7 +1079,9 @@ export default function ThreatModelCanvas({ value, onChange }) {
             </div>
 
             {/* Canvas */}
-            <div className="flex-1 overflow-hidden relative bg-white">
+            <div className="flex-1 overflow-hidden relative bg-white"
+              onDragOver={onCanvasDragOver}
+              onDrop={onCanvasDrop}>
               {connecting && (
                 <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-purple-600 text-white text-[10px] font-mono px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 tracking-wide">
                   <Link2 className="w-3 h-3" />

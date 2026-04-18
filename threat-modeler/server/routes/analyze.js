@@ -35,20 +35,47 @@ router.post('/', async (req, res) => {
     .map(e => e.label || e.type)
     .filter(Boolean);
 
-  const prompt = `You are a senior cybersecurity threat modeler. Perform a thorough STRIDE threat model analysis on the following system.
+  const isOT = formData.projectType === 'OT';
+  const isIT = formData.projectType === 'IT';
+
+  const otContext = isOT ? `
+OT / ICS ENVIRONMENT:
+- Purdue Model Zones in Scope: ${(formData.purdueZones || []).join(', ') || 'Not specified'}
+- IEC 62443 Target Security Level: SL-${formData.iec62443SL || 'Not specified'}
+- OT Protocols in Use: ${(formData.otProtocols || []).join(', ') || 'None specified'}
+- Remote Access Method: ${formData.otRemoteAccess || 'Not specified'}
+- Safety Instrumented System (SIL): ${formData.silLevel || 'None'}
+- Patch Management Cadence: ${formData.otPatchCadence || 'Not specified'}
+- Legacy / End-of-Life Systems Present: ${formData.otLegacySystems ? 'YES' : 'NO'}
+- Network Air-Gap or Segmentation in Place: ${formData.otAirGap ? 'YES' : 'NO'}
+- Third-Party / Vendor Remote Access: ${formData.otVendorAccess ? 'YES' : 'NO'}
+- Applicable OT Standards: ${(formData.otStandards || []).join(', ') || 'None specified'}` : '';
+
+  const itContext = isIT ? `
+IT / CLOUD ENVIRONMENT:
+- Deployment Model: ${formData.deploymentModel || 'Not specified'}
+- Cloud Providers: ${(formData.cloudProviders || []).join(', ') || 'None'}
+- Architecture Pattern: ${formData.itArchPattern || 'Not specified'}
+- Cloud / Infrastructure Services: ${(formData.cloudServices || []).join(', ') || 'None'}
+- Network Exposure: ${formData.networkExposure || 'Not specified'}
+- Identity Provider / IAM: ${(formData.identityProvider || []).join(', ') || 'Not specified'}
+- Authentication Mechanisms: ${Array.isArray(formData.authMechanism) ? formData.authMechanism.join(', ') : (formData.authMechanism || 'Not specified')}
+- Network Security Controls: ${(formData.networkSecurity || []).join(', ') || 'None'}
+- CI/CD Pipeline Security: ${(formData.cicdSecurity || []).join(', ') || 'None'}
+- Technology Stack: ${formData.technologyStack || 'Not specified'}
+- Data Residency: ${formData.dataResidency || 'Not specified'}` : '';
+
+  const prompt = `You are a senior cybersecurity threat modeler specialising in ${isOT ? 'OT/ICS and industrial control systems (IEC 62443, Purdue Model, NERC CIP)' : isIT ? 'IT and cloud security (OWASP, NIST, cloud-native threats)' : 'enterprise security'}. Perform a thorough STRIDE threat model analysis on the following system.
 
 SYSTEM DETAILS:
 - Name: ${project.name}
 - Description: ${project.description || 'Not provided'}
+- Environment Type: ${formData.projectType || 'General IT'}
 - Industry: ${formData.industry || 'Not specified'}
-- Architecture: ${formData.architectureType || 'Not specified'}
-- Network Exposure: ${formData.networkExposure || 'Not specified'}
-- Authentication: ${formData.authMechanism || 'Not specified'}
-- Technology Stack: ${formData.technologyStack || 'Not specified'}
-- Data Residency: ${formData.dataResidency || 'Not specified'}
 - Sensitive Data Types: ${(formData.sensitiveData || []).join(', ') || 'None specified'}
 - Compliance Frameworks: ${(formData.complianceFrameworks || []).join(', ') || 'None'}
 - Criticality: ${formData.criticality || 'medium'}
+${otContext}${itContext}
 ${componentNames.length > 0 ? `- Diagram Components: ${componentNames.join(', ')}` : ''}
 
 Identify exactly 8-12 realistic, specific threats using the STRIDE methodology. Each threat must be directly relevant to this specific system — NOT generic boilerplate.

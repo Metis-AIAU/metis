@@ -6,7 +6,7 @@ import {
   FileText, LayoutTemplate, Brain, BarChart2, Shield, AlertTriangle,
   ChevronRight, ChevronLeft, CheckCircle2, Plus, X, Loader2, Sparkles,
   ArrowRight, GitBranch, Eye, TrendingDown, Network, Database, Globe,
-  Server, Smartphone, Share2, Activity,
+  Server, Smartphone, Share2, Activity, AlertCircle,
 } from 'lucide-react';
 import { useThreatContext, STRIDE_CATEGORIES } from '../context/ThreatContext';
 import ThreatModelCanvas from '../components/ThreatModelCanvas';
@@ -21,16 +21,117 @@ const STAGES = [
   { id: 4, label: 'AI Analysis',          icon: Brain },
 ];
 
-const ARCHITECTURE_TYPES = [
-  { value: 'Web Application',           icon: Globe },
-  { value: 'REST API',                  icon: Network },
-  { value: 'Mobile App',                icon: Smartphone },
-  { value: 'Microservices',             icon: Share2 },
-  { value: 'Cloud Native',              icon: Server },
-  { value: 'On-Premises',               icon: Server },
-  { value: 'IoT / OT / ICS',           icon: Activity },
-  { value: 'Database / Data Warehouse', icon: Database },
+// ─── OT Constants ─────────────────────────────────────────────────────────────
+
+const PURDUE_ZONES = [
+  { level: '0',   name: 'Level 0 — Field Level',        desc: 'Sensors, actuators, field instruments, safety instrumented devices', color: '#dc2626', bgColor: '#fef2f2' },
+  { level: '1',   name: 'Level 1 — Control Level',      desc: 'PLCs, RTUs, DCS controllers, safety controllers (SIS)', color: '#ea580c', bgColor: '#fff7ed' },
+  { level: '2',   name: 'Level 2 — Supervisory Level',  desc: 'SCADA servers, HMI workstations, engineering workstations', color: '#d97706', bgColor: '#fffbeb' },
+  { level: '3',   name: 'Level 3 — Operations Level',   desc: 'MES, Historian, process data servers, production scheduling', color: '#65a30d', bgColor: '#f7fee7' },
+  { level: '3.5', name: 'Level 3.5 — Industrial DMZ',   desc: 'Data diodes, perimeter firewalls, jump servers, patch servers', color: '#0891b2', bgColor: '#ecfeff' },
+  { level: '4',   name: 'Level 4 — Business Network',   desc: 'ERP systems, corporate IT, enterprise applications', color: '#4f46e5', bgColor: '#eef2ff' },
 ];
+
+const IEC62443_LEVELS = [
+  { sl: '0', label: 'SL-0', desc: 'No specific security requirements', color: '#6b7280', bg: '#f9fafb' },
+  { sl: '1', label: 'SL-1', desc: 'Protects against casual or unintentional violation', color: '#16a34a', bg: '#f0fdf4' },
+  { sl: '2', label: 'SL-2', desc: 'Protects against intentional violation using simple means', color: '#d97706', bg: '#fffbeb' },
+  { sl: '3', label: 'SL-3', desc: 'Protects against sophisticated attack with moderate resources', color: '#ea580c', bg: '#fff7ed' },
+  { sl: '4', label: 'SL-4', desc: 'Protects against state-sponsored / nation-state level attacks', color: '#dc2626', bg: '#fef2f2' },
+];
+
+const OT_PROTOCOLS = [
+  'Modbus TCP/RTU', 'PROFINET', 'EtherNet/IP', 'DNP3', 'IEC 61850',
+  'OPC-UA', 'OPC-DA', 'BACnet', 'PROFIBUS', 'DeviceNet',
+  'Foundation Fieldbus', 'IEC 60870-5', 'Siemens S7', 'MQTT',
+  'WirelessHART', 'HART', 'DDS',
+];
+
+const OT_REMOTE_ACCESS = [
+  { v: 'none',         l: 'No Remote Access',       d: 'Fully air-gapped, no remote connectivity' },
+  { v: 'vpn',          l: 'VPN / Secure Tunnel',     d: 'Encrypted VPN with MFA to jump host' },
+  { v: 'jump-server',  l: 'Jump Server / Bastion',   d: 'Dedicated bastion host with logging' },
+  { v: 'vendor-direct',l: 'Vendor Direct Access',    d: 'Vendor modem or direct connection' },
+  { v: 'rdp-direct',   l: 'Direct RDP/VNC',          d: 'Direct remote desktop without VPN' },
+];
+
+const OT_PATCH_MANAGEMENT = [
+  { v: 'never',     l: 'Never / Unknown',    d: 'Systems never or rarely patched' },
+  { v: 'annual',    l: 'Annual',             d: 'Patched once per year during outage' },
+  { v: 'quarterly', l: 'Quarterly',          d: 'Patched every 3 months on schedule' },
+  { v: 'monthly',   l: 'Monthly',            d: 'Monthly patch cycles applied' },
+  { v: 'continuous',l: 'Continuous',         d: 'Automated patching where feasible' },
+];
+
+const SIL_LEVELS = [
+  { v: 'none',  l: 'No SIS',   d: 'No safety instrumented system' },
+  { v: 'sil1',  l: 'SIL 1',   d: 'Low demand, minor injury risk' },
+  { v: 'sil2',  l: 'SIL 2',   d: 'High demand, major injury risk' },
+  { v: 'sil3',  l: 'SIL 3',   d: 'Continuous demand, multiple fatalities' },
+  { v: 'sil4',  l: 'SIL 4',   d: 'Catastrophic consequences' },
+];
+
+const OT_STANDARDS = [
+  { id: 'iec62443',      name: 'IEC 62443',       desc: 'Industrial cybersecurity standard series', color: '#dc2626' },
+  { id: 'nerc-cip',      name: 'NERC CIP',         desc: 'Critical infrastructure protection (power grid)', color: '#7c3aed' },
+  { id: 'aescsf',        name: 'AESCSF',           desc: 'Australian Energy Sector Cyber Security Framework', color: '#1d4ed8' },
+  { id: 'nist-sp800-82', name: 'NIST SP 800-82',   desc: 'Guide to OT/ICS security (NIST)', color: '#15803d' },
+  { id: 'isa-62443',     name: 'ISA/IEC 99',       desc: 'Industrial automation & control systems security', color: '#0891b2' },
+  { id: 'soci',          name: 'SOCI Act',          desc: 'Security of Critical Infrastructure Act 2018', color: '#be123c' },
+];
+
+// ─── IT Constants ─────────────────────────────────────────────────────────────
+
+const DEPLOYMENT_MODELS = [
+  { v: 'cloud',      l: 'Cloud-only',    d: 'Fully hosted in public cloud(s)',       icon: Server },
+  { v: 'on-prem',    l: 'On-premises',   d: 'Self-hosted in own data centre',        icon: Database },
+  { v: 'hybrid',     l: 'Hybrid',        d: 'Mix of cloud and on-premises',          icon: Share2 },
+  { v: 'saas',       l: 'SaaS Product',  d: 'Software delivered as a service',       icon: Globe },
+  { v: 'edge',       l: 'Edge / CDN',    d: 'Distributed edge compute deployment',   icon: Network },
+];
+
+const CLOUD_PROVIDERS = [
+  'Amazon Web Services (AWS)', 'Microsoft Azure', 'Google Cloud (GCP)',
+  'Oracle Cloud', 'IBM Cloud', 'Alibaba Cloud', 'Private Cloud / OpenStack',
+];
+
+const IT_ARCH_PATTERNS = [
+  { v: 'microservices', l: 'Microservices',   d: 'Independently deployable services' },
+  { v: 'monolith',      l: 'Monolithic',      d: 'Single deployable unit' },
+  { v: 'serverless',    l: 'Serverless',      d: 'Function-as-a-Service (Lambda etc.)' },
+  { v: 'event-driven',  l: 'Event-driven',    d: 'Message queues and event streams' },
+  { v: 'soa',           l: 'SOA / ESB',       d: 'Service-oriented architecture' },
+  { v: 'jamstack',      l: 'Jamstack / SPA',  d: 'Static frontend + API backend' },
+];
+
+const CLOUD_SERVICES = [
+  'Virtual Machines / EC2', 'Containers (ECS / AKS / GKE)', 'Kubernetes',
+  'Serverless Functions', 'Managed Databases (RDS / CosmosDB / CloudSQL)',
+  'Object Storage (S3 / Blob)', 'API Gateway', 'CDN / Edge',
+  'Message Queue (SQS / Service Bus)', 'Data Warehouse / Analytics',
+  'ML / AI Services', 'Key Management (KMS / Key Vault)',
+];
+
+const IDENTITY_PROVIDERS = [
+  'Microsoft Active Directory', 'Azure AD / Entra ID', 'Okta',
+  'Google Workspace', 'AWS IAM / Cognito', 'Auth0', 'Ping Identity', 'Custom LDAP',
+];
+
+const NETWORK_SECURITY = [
+  'WAF (Web Application Firewall)', 'DDoS Protection',
+  'IDS / IPS', 'CASB', 'Zero Trust / ZTNA',
+  'VPN / Site-to-Site', 'Network Segmentation / VPC',
+  'Bastion / Jump Host', 'Service Mesh (Istio / Linkerd)',
+];
+
+const CICD_SECURITY = [
+  'SAST (Static Analysis)', 'DAST (Dynamic Analysis)',
+  'SCA (Software Composition Analysis)', 'Secrets Scanning',
+  'Container Image Scanning', 'Infrastructure as Code Scanning',
+  'Signed Commits / Release Signing', 'SBOM Generation',
+];
+
+// ─── Shared IT/OT constants ────────────────────────────────────────────────────
 
 const SENSITIVE_DATA_TYPES = [
   'Personally Identifiable Information (PII)',
@@ -49,12 +150,13 @@ const INDUSTRIES = [
   'Energy & Utilities', 'Financial Services', 'Healthcare',
   'Government / Defence', 'Retail & E-Commerce', 'Education',
   'Transport & Logistics', 'Telecommunications', 'Critical Infrastructure',
-  'Technology / SaaS',
+  'Technology / SaaS', 'Manufacturing', 'Mining & Resources',
 ];
 
 const AUTH_MECHANISMS = [
   'Username & Password', 'MFA (Password + OTP)', 'SSO / SAML',
   'OAuth 2.0 / OIDC', 'API Key', 'Certificate / mTLS', 'Passwordless',
+  'Smart Card / PKI',
 ];
 
 const COMPLIANCE_FRAMEWORKS = [
@@ -167,7 +269,33 @@ function RiskBadge({ level }) {
 
 // ─── Stage 1: Project Details ─────────────────────────────────────────────────
 
-function Stage1({ form, setForm }) {
+function TagChip({ label, selected, color = 'blue', onClick }) {
+  const colors = {
+    blue:   { on: 'bg-blue-600 text-white border-blue-600',   off: 'bg-white text-gray-600 border-gray-300 hover:border-gray-400' },
+    purple: { on: 'bg-purple-600 text-white border-purple-600', off: 'bg-white text-gray-600 border-gray-300 hover:border-gray-400' },
+    red:    { on: 'bg-red-600 text-white border-red-600',     off: 'bg-white text-gray-600 border-gray-300 hover:border-gray-400' },
+    amber:  { on: 'bg-amber-600 text-white border-amber-600', off: 'bg-white text-gray-600 border-gray-300 hover:border-gray-400' },
+  };
+  return (
+    <button type="button" onClick={onClick}
+      className={`px-3 py-1.5 rounded-full text-sm border transition-all ${selected ? colors[color].on : colors[color].off}`}>
+      {label}
+    </button>
+  );
+}
+
+function SectionLabel({ children, badge }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-xs font-bold uppercase tracking-widest text-gray-500">{children}</span>
+      {badge && <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-700">{badge}</span>}
+    </div>
+  );
+}
+
+// ── OT-specific form ──────────────────────────────────────────────────────────
+
+function OTForm({ form, setForm }) {
   const toggle = (field, value) => {
     const arr = form[field] || [];
     setForm(f => ({ ...f, [field]: arr.includes(value) ? arr.filter(x => x !== value) : [...arr, value] }));
@@ -175,24 +303,391 @@ function Stage1({ form, setForm }) {
 
   return (
     <div className="space-y-8">
+      {/* Purdue Model Zones */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Project Details</h2>
+        <SectionLabel badge="IEC 62443 / Purdue">Purdue Model Zones in Scope</SectionLabel>
+        <p className="text-xs text-gray-500 mb-4">Select all network zones that fall within this project's scope</p>
+        <div className="space-y-2">
+          {PURDUE_ZONES.map(zone => {
+            const selected = (form.purdueZones || []).includes(zone.level);
+            return (
+              <button key={zone.level} type="button"
+                onClick={() => toggle('purdueZones', zone.level)}
+                className="w-full flex items-center gap-4 p-3.5 rounded-xl border-2 text-left transition-all"
+                style={selected
+                  ? { borderColor: zone.color, background: zone.bgColor }
+                  : { borderColor: '#e5e7eb', background: '#fff' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  style={{ background: selected ? zone.color : '#9ca3af' }}>
+                  {zone.level}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-gray-900">{zone.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{zone.desc}</p>
+                </div>
+                {selected && <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: zone.color }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* IEC 62443 Security Level */}
+      <div>
+        <SectionLabel badge="IEC 62443">Target Security Level (SL)</SectionLabel>
+        <p className="text-xs text-gray-500 mb-4">The security level the system must achieve against adversarial threats</p>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          {IEC62443_LEVELS.map(sl => {
+            const selected = form.iec62443SL === sl.sl;
+            return (
+              <button key={sl.sl} type="button"
+                onClick={() => setForm(f => ({ ...f, iec62443SL: sl.sl }))}
+                className="flex flex-col items-center p-3 rounded-xl border-2 text-center transition-all"
+                style={selected
+                  ? { borderColor: sl.color, background: sl.bg }
+                  : { borderColor: '#e5e7eb', background: '#fff' }}>
+                <span className="text-lg font-black mb-1" style={{ color: selected ? sl.color : '#9ca3af' }}>{sl.label}</span>
+                <p className="text-xs text-gray-500 leading-tight">{sl.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* OT Protocols */}
+      <div>
+        <SectionLabel>OT / ICS Protocols in Use</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {OT_PROTOCOLS.map(p => (
+            <TagChip key={p} label={p} color="red"
+              selected={(form.otProtocols || []).includes(p)}
+              onClick={() => toggle('otProtocols', p)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Remote Access */}
+      <div>
+        <SectionLabel>Remote Access Method</SectionLabel>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {OT_REMOTE_ACCESS.map(({ v, l, d }) => (
+            <button key={v} type="button"
+              onClick={() => setForm(f => ({ ...f, otRemoteAccess: v }))}
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
+                form.otRemoteAccess === v ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}>
+              <p className="font-semibold text-sm text-gray-900">{l}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{d}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Safety Systems + Patch */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <SectionLabel badge="IEC 61511">Safety Instrumented System (SIL)</SectionLabel>
+          <div className="space-y-2">
+            {SIL_LEVELS.map(({ v, l, d }) => (
+              <button key={v} type="button"
+                onClick={() => setForm(f => ({ ...f, silLevel: v }))}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                  form.silLevel === v ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}>
+                <span className="text-sm font-bold w-10 flex-shrink-0 text-center"
+                  style={{ color: form.silLevel === v ? '#dc2626' : '#9ca3af' }}>{l}</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{d}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <SectionLabel>Patch Management Capability</SectionLabel>
+          <div className="space-y-2">
+            {OT_PATCH_MANAGEMENT.map(({ v, l, d }) => (
+              <button key={v} type="button"
+                onClick={() => setForm(f => ({ ...f, otPatchCadence: v }))}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                  form.otPatchCadence === v ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}>
+                <span className="text-xs font-bold w-16 flex-shrink-0"
+                  style={{ color: form.otPatchCadence === v ? '#d97706' : '#9ca3af' }}>{l}</span>
+                <p className="text-xs text-gray-500">{d}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Legacy systems & air gap toggles */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {[
+          { field: 'otLegacySystems', label: 'Legacy / End-of-Life Systems Present', sub: 'Systems running beyond vendor support lifecycle' },
+          { field: 'otAirGap',        label: 'Network Air-Gap or Segmentation in Place', sub: 'Physical or logical separation from IT/internet' },
+          { field: 'otAssetInventory',label: 'Comprehensive OT Asset Inventory Exists', sub: 'All OT assets documented and tracked' },
+          { field: 'otVendorAccess',  label: 'Third-Party / Vendor Remote Access', sub: 'External vendors have remote access to OT systems' },
+        ].map(({ field, label, sub }) => (
+          <label key={field} className="flex items-start justify-between p-4 rounded-xl border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+            <div className="flex-1 mr-3">
+              <p className="text-sm font-semibold text-gray-800">{label}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{sub}</p>
+            </div>
+            <div
+              onClick={() => setForm(f => ({ ...f, [field]: !f[field] }))}
+              className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 mt-0.5 ${form[field] ? 'bg-blue-500' : 'bg-gray-200'}`}>
+              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${form[field] ? 'left-5' : 'left-1'}`} />
+            </div>
+          </label>
+        ))}
+      </div>
+
+      {/* OT Standards */}
+      <div>
+        <SectionLabel>Applicable OT Standards & Frameworks</SectionLabel>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {OT_STANDARDS.map(std => {
+            const selected = (form.otStandards || []).includes(std.id);
+            return (
+              <button key={std.id} type="button"
+                onClick={() => toggle('otStandards', std.id)}
+                className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                  selected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
+                  style={{ background: std.color }}>{std.name.slice(0,3)}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm">{std.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{std.desc}</p>
+                </div>
+                {selected && <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sensitive data */}
+      <div>
+        <SectionLabel>Sensitive / Operational Data Handled</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {SENSITIVE_DATA_TYPES.map(type => (
+            <TagChip key={type} label={type} color="purple"
+              selected={(form.sensitiveData || []).includes(type)}
+              onClick={() => toggle('sensitiveData', type)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── IT-specific form ──────────────────────────────────────────────────────────
+
+function ITForm({ form, setForm }) {
+  const toggle = (field, value) => {
+    const arr = form[field] || [];
+    setForm(f => ({ ...f, [field]: arr.includes(value) ? arr.filter(x => x !== value) : [...arr, value] }));
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Deployment model */}
+      <div>
+        <SectionLabel>Deployment Model</SectionLabel>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {DEPLOYMENT_MODELS.map(({ v, l, d, icon: Icon }) => (
+            <button key={v} type="button"
+              onClick={() => setForm(f => ({ ...f, deploymentModel: v }))}
+              className={`flex flex-col items-start gap-2 p-4 rounded-xl border-2 text-left transition-all ${
+                form.deploymentModel === v ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}>
+              <Icon className={`w-5 h-5 ${form.deploymentModel === v ? 'text-blue-600' : 'text-gray-400'}`} />
+              <div>
+                <p className="font-semibold text-sm text-gray-900">{l}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{d}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cloud providers */}
+      {['cloud', 'hybrid', 'saas'].includes(form.deploymentModel) && (
+        <div>
+          <SectionLabel>Cloud Provider(s)</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {CLOUD_PROVIDERS.map(p => (
+              <TagChip key={p} label={p} color="blue"
+                selected={(form.cloudProviders || []).includes(p)}
+                onClick={() => toggle('cloudProviders', p)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Architecture pattern */}
+      <div>
+        <SectionLabel>Architecture Pattern</SectionLabel>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {IT_ARCH_PATTERNS.map(({ v, l, d }) => (
+            <button key={v} type="button"
+              onClick={() => setForm(f => ({ ...f, itArchPattern: v }))}
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
+                form.itArchPattern === v ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}>
+              <p className="font-semibold text-sm text-gray-900">{l}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{d}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cloud services used */}
+      <div>
+        <SectionLabel>Cloud / Infrastructure Services Used</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {CLOUD_SERVICES.map(s => (
+            <TagChip key={s} label={s} color="blue"
+              selected={(form.cloudServices || []).includes(s)}
+              onClick={() => toggle('cloudServices', s)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Network exposure */}
+      <div>
+        <SectionLabel>Network Exposure</SectionLabel>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { v: 'internet',   l: 'Internet-facing', d: 'Accessible by public' },
+            { v: 'internal',   l: 'Internal Only',   d: 'Corporate / VPN only' },
+            { v: 'air-gapped', l: 'Air-gapped',      d: 'No external network' },
+            { v: 'hybrid',     l: 'Hybrid',          d: 'Mix of exposure zones' },
+          ].map(({ v, l, d }) => (
+            <button key={v} type="button"
+              onClick={() => setForm(f => ({ ...f, networkExposure: v }))}
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
+                form.networkExposure === v ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}>
+              <p className="font-semibold text-sm text-gray-900">{l}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{d}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Identity provider */}
+      <div>
+        <SectionLabel>Identity Provider / IAM</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {IDENTITY_PROVIDERS.map(p => (
+            <TagChip key={p} label={p} color="blue"
+              selected={(form.identityProvider || []).includes(p)}
+              onClick={() => toggle('identityProvider', p)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Authentication */}
+      <div>
+        <SectionLabel>Authentication Mechanisms</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {AUTH_MECHANISMS.map(m => (
+            <TagChip key={m} label={m} color="blue"
+              selected={(form.authMechanism || []).includes(m)}
+              onClick={() => toggle('authMechanism', m)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Network security */}
+      <div>
+        <SectionLabel>Network Security Controls</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {NETWORK_SECURITY.map(n => (
+            <TagChip key={n} label={n} color="purple"
+              selected={(form.networkSecurity || []).includes(n)}
+              onClick={() => toggle('networkSecurity', n)} />
+          ))}
+        </div>
+      </div>
+
+      {/* CI/CD security */}
+      <div>
+        <SectionLabel>CI/CD Pipeline Security</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {CICD_SECURITY.map(c => (
+            <TagChip key={c} label={c} color="amber"
+              selected={(form.cicdSecurity || []).includes(c)}
+              onClick={() => toggle('cicdSecurity', c)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Technology stack */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="label">Technology Stack</label>
+          <input type="text" value={form.technologyStack || ''}
+            onChange={e => setForm(f => ({ ...f, technologyStack: e.target.value }))}
+            className="input" placeholder="e.g., React, Node.js, PostgreSQL, AWS Lambda" />
+        </div>
+        <div>
+          <label className="label">Data Residency</label>
+          <select value={form.dataResidency || ''}
+            onChange={e => setForm(f => ({ ...f, dataResidency: e.target.value }))} className="input">
+            <option value="">Select…</option>
+            <option value="australia">Australia only</option>
+            <option value="multi-region">Multi-region</option>
+            <option value="on-premises">On-premises</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Sensitive data */}
+      <div>
+        <SectionLabel>Sensitive Data Handled</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          {SENSITIVE_DATA_TYPES.map(type => (
+            <TagChip key={type} label={type} color="purple"
+              selected={(form.sensitiveData || []).includes(type)}
+              onClick={() => toggle('sensitiveData', type)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Stage 1 wrapper ───────────────────────────────────────────────────────────
+
+function Stage1({ form, setForm }) {
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>
+          Project Details
+        </h2>
         <p className="text-gray-500 mt-1">Tell us about the system you want to threat model</p>
       </div>
 
-      {/* Basic info */}
+      {/* ── Common fields ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="md:col-span-2">
           <label className="label">Project Name *</label>
           <input type="text" value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            className="input" placeholder="e.g., Payment Gateway API" required />
+            className="input" placeholder="e.g., SCADA Control System or Payment Gateway API" required />
         </div>
         <div className="md:col-span-2">
           <label className="label">System Description</label>
           <textarea value={form.description}
             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            className="input min-h-[90px]" rows={3}
+            className="input min-h-[80px]" rows={3}
             placeholder="Describe the system, its purpose, key components, and any known risks…" />
         </div>
         <div>
@@ -203,8 +698,7 @@ function Stage1({ form, setForm }) {
         </div>
         <div>
           <label className="label">Status</label>
-          <select value={form.status}
-            onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="input">
+          <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="input">
             <option value="planning">Planning</option>
             <option value="active">Active</option>
             <option value="completed">Completed</option>
@@ -212,125 +706,152 @@ function Stage1({ form, setForm }) {
         </div>
         <div>
           <label className="label">Industry Sector</label>
-          <select value={form.industry}
-            onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} className="input">
+          <select value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} className="input">
             <option value="">Select industry…</option>
             {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
           </select>
         </div>
         <div>
           <label className="label">System Criticality</label>
-          <select value={form.criticality}
-            onChange={e => setForm(f => ({ ...f, criticality: e.target.value }))} className="input">
+          <select value={form.criticality} onChange={e => setForm(f => ({ ...f, criticality: e.target.value }))} className="input">
             <option value="low">Low – minor business impact</option>
             <option value="medium">Medium – moderate impact</option>
             <option value="high">High – significant impact</option>
             <option value="critical">Critical – essential / safety-of-life</option>
           </select>
         </div>
-        <div>
-          <label className="label">Technology Stack</label>
-          <input type="text" value={form.technologyStack}
-            onChange={e => setForm(f => ({ ...f, technologyStack: e.target.value }))}
-            className="input" placeholder="e.g., React, Node.js, PostgreSQL, AWS" />
-        </div>
-        <div>
-          <label className="label">Data Residency</label>
-          <select value={form.dataResidency}
-            onChange={e => setForm(f => ({ ...f, dataResidency: e.target.value }))} className="input">
-            <option value="">Select…</option>
-            <option value="australia">Australia only</option>
-            <option value="multi-region">Multi-region</option>
-            <option value="on-premises">On-premises</option>
-            <option value="hybrid">Hybrid</option>
-          </select>
-        </div>
         <div className="md:col-span-2">
           <label className="label">Tags (comma-separated)</label>
           <input type="text" value={form.tags}
             onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
-            className="input" placeholder="e.g., payments, pci-dss, internet-facing" />
+            className="input" placeholder="e.g., scada, iec62443, internet-facing, pci-dss" />
         </div>
       </div>
 
-      {/* Architecture type */}
+      {/* ── Project Type selector ── */}
       <div>
-        <label className="label mb-3">Architecture Type</label>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {ARCHITECTURE_TYPES.map(({ value, icon: Icon }) => (
-            <button key={value} type="button"
-              onClick={() => setForm(f => ({ ...f, architectureType: value }))}
-              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-sm font-medium transition-all ${
-                form.architectureType === value
-                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 text-gray-600'
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-px flex-1 bg-gray-200" />
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Environment Type</span>
+          <div className="h-px flex-1 bg-gray-200" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* OT Card */}
+          <button type="button" onClick={() => setForm(f => ({ ...f, projectType: 'OT' }))}
+            className={`relative flex flex-col text-left p-6 rounded-2xl border-2 transition-all overflow-hidden group ${
+              form.projectType === 'OT'
+                ? 'border-orange-500 bg-gradient-to-br from-orange-50 to-red-50'
+                : 'border-gray-200 hover:border-orange-300 bg-white'
+            }`}>
+            {/* Background decoration */}
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full opacity-10 transition-opacity group-hover:opacity-15"
+              style={{ background: 'radial-gradient(circle, #ea580c, transparent)' }} />
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                form.projectType === 'OT' ? 'bg-orange-500' : 'bg-gray-200'
               }`}>
-              <Icon className="w-5 h-5" />
-              {value}
-            </button>
-          ))}
+                <Activity className={`w-5 h-5 ${form.projectType === 'OT' ? 'text-white' : 'text-gray-500'}`} />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-lg" style={{ fontFamily: 'var(--font-display)' }}>OT / ICS</p>
+                <p className="text-xs text-gray-500">Operational Technology</p>
+              </div>
+              {form.projectType === 'OT' && <CheckCircle2 className="w-5 h-5 text-orange-500 ml-auto" />}
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Industrial control systems, SCADA, DCS, PLCs, RTUs and critical infrastructure. Covers Purdue Model zones, IEC 62443 security levels, and OT-specific protocols.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {['Purdue Model', 'IEC 62443', 'NERC CIP', 'AESCSF', 'SIL Rating'].map(t => (
+                <span key={t} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: form.projectType === 'OT' ? '#fff7ed' : '#f9fafb', color: form.projectType === 'OT' ? '#c2410c' : '#6b7280', border: '1px solid', borderColor: form.projectType === 'OT' ? '#fed7aa' : '#e5e7eb' }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          </button>
+
+          {/* IT Card */}
+          <button type="button" onClick={() => setForm(f => ({ ...f, projectType: 'IT' }))}
+            className={`relative flex flex-col text-left p-6 rounded-2xl border-2 transition-all overflow-hidden group ${
+              form.projectType === 'IT'
+                ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50'
+                : 'border-gray-200 hover:border-blue-300 bg-white'
+            }`}>
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full opacity-10 transition-opacity group-hover:opacity-15"
+              style={{ background: 'radial-gradient(circle, #2563eb, transparent)' }} />
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                form.projectType === 'IT' ? 'bg-blue-600' : 'bg-gray-200'
+              }`}>
+                <Server className={`w-5 h-5 ${form.projectType === 'IT' ? 'text-white' : 'text-gray-500'}`} />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-lg" style={{ fontFamily: 'var(--font-display)' }}>IT / Cloud</p>
+                <p className="text-xs text-gray-500">Information Technology</p>
+              </div>
+              {form.projectType === 'IT' && <CheckCircle2 className="w-5 h-5 text-blue-600 ml-auto" />}
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Web applications, APIs, cloud infrastructure, SaaS products and enterprise IT. Covers cloud providers, deployment models, CI/CD security and modern architecture patterns.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {['AWS / Azure / GCP', 'Microservices', 'Zero Trust', 'OWASP', 'ISO 27001'].map(t => (
+                <span key={t} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: form.projectType === 'IT' ? '#eff6ff' : '#f9fafb', color: form.projectType === 'IT' ? '#1d4ed8' : '#6b7280', border: '1px solid', borderColor: form.projectType === 'IT' ? '#bfdbfe' : '#e5e7eb' }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          </button>
         </div>
       </div>
 
-      {/* Network exposure */}
-      <div>
-        <label className="label mb-3">Network Exposure</label>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { v: 'internet',    l: 'Internet-facing', d: 'Accessible by public' },
-            { v: 'internal',    l: 'Internal Only',   d: 'Corporate / VPN only' },
-            { v: 'air-gapped',  l: 'Air-gapped',      d: 'No external network' },
-            { v: 'hybrid',      l: 'Hybrid',          d: 'Mix of zones' },
-          ].map(({ v, l, d }) => (
-            <button key={v} type="button"
-              onClick={() => setForm(f => ({ ...f, networkExposure: v }))}
-              className={`p-4 rounded-xl border-2 text-left transition-all ${
-                form.networkExposure === v
-                  ? 'border-blue-600 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}>
-              <p className="font-semibold text-sm text-gray-900">{l}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{d}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Authentication */}
-      <div>
-        <label className="label mb-3">Authentication Mechanism</label>
-        <div className="flex flex-wrap gap-2">
-          {AUTH_MECHANISMS.map(m => (
-            <button key={m} type="button"
-              onClick={() => setForm(f => ({ ...f, authMechanism: m }))}
-              className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
-                form.authMechanism === m
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
-              }`}>
-              {m}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Sensitive data */}
-      <div>
-        <label className="label mb-3">Sensitive Data Handled</label>
-        <div className="flex flex-wrap gap-2">
-          {SENSITIVE_DATA_TYPES.map(type => (
-            <button key={type} type="button"
-              onClick={() => toggle('sensitiveData', type)}
-              className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
-                (form.sensitiveData || []).includes(type)
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
-              }`}>
-              {type}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* ── Conditional form ── */}
+      <AnimatePresence mode="wait">
+        {form.projectType === 'OT' && (
+          <motion.div key="ot"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}>
+            <div className="flex items-center gap-3 mb-6 pt-2">
+              <div className="h-px flex-1 bg-orange-200" />
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-50 border border-orange-200">
+                <Activity className="w-4 h-4 text-orange-600" />
+                <span className="text-sm font-bold text-orange-700">OT / ICS Environment Questions</span>
+              </div>
+              <div className="h-px flex-1 bg-orange-200" />
+            </div>
+            <OTForm form={form} setForm={setForm} />
+          </motion.div>
+        )}
+        {form.projectType === 'IT' && (
+          <motion.div key="it"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}>
+            <div className="flex items-center gap-3 mb-6 pt-2">
+              <div className="h-px flex-1 bg-blue-200" />
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 border border-blue-200">
+                <Server className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-bold text-blue-700">IT / Cloud Environment Questions</span>
+              </div>
+              <div className="h-px flex-1 bg-blue-200" />
+            </div>
+            <ITForm form={form} setForm={setForm} />
+          </motion.div>
+        )}
+        {!form.projectType && (
+          <motion.div key="none"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-12 rounded-2xl border-2 border-dashed border-gray-200 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+              <AlertCircle className="w-6 h-6 text-gray-400" />
+            </div>
+            <p className="text-sm font-semibold text-gray-600">Select an environment type above</p>
+            <p className="text-xs text-gray-400 mt-1">The form will adapt to show relevant security questions</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -511,13 +1032,33 @@ function Stage4({ project, form, diagramData, onSave }) {
       const result = await analyzeWithContext(
         project,
         {
+          projectType:        form?.projectType,
           networkExposure:    form?.networkExposure,
-          architectureTypes:  form?.architectureType ? [form.architectureType] : [],
           sensitiveData:      form?.sensitiveData,
-          authMechanism:      form?.authMechanism,
-          technologyStack:    form?.technologyStack,
           industry:           form?.industry,
           criticality:        form?.criticality,
+          // OT context
+          purdueZones:        form?.purdueZones,
+          iec62443SL:         form?.iec62443SL,
+          otProtocols:        form?.otProtocols,
+          otRemoteAccess:     form?.otRemoteAccess,
+          silLevel:           form?.silLevel,
+          otPatchCadence:     form?.otPatchCadence,
+          otLegacySystems:    form?.otLegacySystems,
+          otAirGap:           form?.otAirGap,
+          otVendorAccess:     form?.otVendorAccess,
+          otStandards:        form?.otStandards,
+          // IT context
+          deploymentModel:    form?.deploymentModel,
+          cloudProviders:     form?.cloudProviders,
+          itArchPattern:      form?.itArchPattern,
+          cloudServices:      form?.cloudServices,
+          identityProvider:   form?.identityProvider,
+          authMechanism:      form?.authMechanism,
+          networkSecurity:    form?.networkSecurity,
+          cicdSecurity:       form?.cicdSecurity,
+          technologyStack:    form?.technologyStack,
+          dataResidency:      form?.dataResidency,
         },
         diagramData?.elements || [],
         p => setProgress(p),
@@ -1285,11 +1826,33 @@ export default function NewProject() {
     tags:                 '',
     industry:             '',
     criticality:          'medium',
-    architectureType:     '',
+    // OT / IT type
+    projectType:          '',
+    // OT fields
+    purdueZones:          [],
+    iec62443SL:           '',
+    otProtocols:          [],
+    otRemoteAccess:       '',
+    silLevel:             '',
+    otPatchCadence:       '',
+    otLegacySystems:      false,
+    otAirGap:             false,
+    otAssetInventory:     false,
+    otVendorAccess:       false,
+    otStandards:          [],
+    // IT fields
+    deploymentModel:      '',
+    cloudProviders:       [],
+    itArchPattern:        '',
+    cloudServices:        [],
     networkExposure:      '',
-    authMechanism:        '',
+    identityProvider:     [],
+    authMechanism:        [],
+    networkSecurity:      [],
+    cicdSecurity:         [],
     technologyStack:      '',
     dataResidency:        '',
+    // Shared
     sensitiveData:        [],
     complianceFrameworks: [],
     threatModel:          'stride',
@@ -1311,11 +1874,33 @@ export default function NewProject() {
         tags:                 form.tags.split(',').map(t => t.trim()).filter(Boolean),
         industry:             form.industry,
         criticality:          form.criticality,
-        architectureType:     form.architectureType,
+        // OT / IT
+        projectType:          form.projectType,
+        // OT fields
+        purdueZones:          form.purdueZones,
+        iec62443SL:           form.iec62443SL,
+        otProtocols:          form.otProtocols,
+        otRemoteAccess:       form.otRemoteAccess,
+        silLevel:             form.silLevel,
+        otPatchCadence:       form.otPatchCadence,
+        otLegacySystems:      form.otLegacySystems,
+        otAirGap:             form.otAirGap,
+        otAssetInventory:     form.otAssetInventory,
+        otVendorAccess:       form.otVendorAccess,
+        otStandards:          form.otStandards,
+        // IT fields
+        deploymentModel:      form.deploymentModel,
+        cloudProviders:       form.cloudProviders,
+        itArchPattern:        form.itArchPattern,
+        cloudServices:        form.cloudServices,
         networkExposure:      form.networkExposure,
+        identityProvider:     form.identityProvider,
         authMechanism:        form.authMechanism,
+        networkSecurity:      form.networkSecurity,
+        cicdSecurity:         form.cicdSecurity,
         technologyStack:      form.technologyStack,
         dataResidency:        form.dataResidency,
+        // Shared
         sensitiveData:        form.sensitiveData,
         complianceFrameworks: form.complianceFrameworks,
         threatModel:          form.threatModel,

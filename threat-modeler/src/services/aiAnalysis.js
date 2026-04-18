@@ -731,14 +731,21 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
 
   // ── Simulation fallback (no API key or backend unavailable) ─────────────
   const { id: projectId, name, description, tags } = project;
-  const combined = `${name} ${description} ${tags?.join(' ')} ${formData.systemDescription || ''} ${formData.technologyStack || ''}`.toLowerCase();
+  const combined = `${name} ${description} ${tags?.join(' ')} ${formData.technologyStack || ''} ${(formData.otProtocols || []).join(' ')} ${(formData.cloudProviders || []).join(' ')}`.toLowerCase();
 
   onProgress?.({ step: 1, total: 4, message: 'Analysing system characteristics and attack surface...' });
   await simulateDelay(900);
 
   const characteristics = analyzeProjectCharacteristics(name, description, tags);
-  const archTypes = (formData.architectureTypes || []).map(a => a.toLowerCase().replace(/[^a-z]/g, ''));
-  const allChars = [...new Set([...characteristics, ...archTypes])];
+  // Map new OT/IT form fields to characteristic tags for threat selection
+  const extraChars = [];
+  if (formData.projectType === 'OT') extraChars.push('iot');
+  if (formData.projectType === 'IT') extraChars.push('web', 'api');
+  if ((formData.cloudProviders || []).length > 0) extraChars.push('cloud');
+  if ((formData.deploymentModel || '').includes('cloud')) extraChars.push('cloud');
+  if ((formData.itArchPattern || '').includes('microservice')) extraChars.push('api');
+  if ((formData.authMechanism || []).length > 0) extraChars.push('auth');
+  const allChars = [...new Set([...characteristics, ...extraChars])];
 
   onProgress?.({ step: 2, total: 4, message: 'Selecting and scoring applicable threat scenarios...' });
   await simulateDelay(1200);

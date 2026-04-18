@@ -234,14 +234,21 @@ function threatReducer(state, action) {
         ),
       };
 
-    case ACTIONS.IMPORT_AI_RESULTS:
+    case ACTIONS.IMPORT_AI_RESULTS: {
+      // Replace existing entries for the same project to prevent duplicates on re-run
+      const incomingProjectIds = new Set([
+        ...action.payload.threats.map(t => t.projectId),
+        ...action.payload.controls.map(c => c.projectId),
+        ...action.payload.assets.map(a => a.projectId),
+      ].filter(Boolean));
       return {
         ...state,
-        threats:   [...state.threats,   ...action.payload.threats],
-        controls:  [...state.controls,  ...action.payload.controls],
-        assets:    [...state.assets,    ...action.payload.assets],
-        dataFlows: [...state.dataFlows, ...action.payload.dataFlows],
+        threats:   [...state.threats.filter(t => !incomingProjectIds.has(t.projectId)),   ...action.payload.threats],
+        controls:  [...state.controls.filter(c => !incomingProjectIds.has(c.projectId)),  ...action.payload.controls],
+        assets:    [...state.assets.filter(a => !incomingProjectIds.has(a.projectId)),    ...action.payload.assets],
+        dataFlows: [...state.dataFlows.filter(d => !incomingProjectIds.has(d.projectId)), ...action.payload.dataFlows],
       };
+    }
 
     default:
       return state;

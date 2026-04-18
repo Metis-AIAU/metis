@@ -719,14 +719,37 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
         await simulateDelay(200);
         return data;
       }
-      // Server responded but API key not set — fall through to simulation
-      if (data.error?.includes('ANTHROPIC_API_KEY')) {
-        console.info('[AI] API key not configured — using simulation mode');
-      }
+      // Server-side error (e.g. missing API key)
+      throw new Error(data.error || 'AI analysis failed on server');
     }
+
+    // Non-2xx from server — parse body for the real error message
+    let serverError = `Server error ${response.status}`;
+    try {
+      const errBody = await response.json();
+      serverError = errBody.error || serverError;
+    } catch { /* body not JSON */ }
+
+    // Detect invalid/expired API key — surface clearly instead of silent fallback
+    if (serverError.includes('authentication_error') || serverError.includes('invalid x-api-key') || serverError.includes('invalid_api_key')) {
+      throw new Error('INVALID_API_KEY: The ANTHROPIC_API_KEY in server/.env is invalid or expired. Update it and restart the server.');
+    }
+    // Missing key configured on server
+    if (serverError.includes('ANTHROPIC_API_KEY')) {
+      throw new Error('API key not configured on server — set ANTHROPIC_API_KEY in server/.env and restart.');
+    }
+    throw new Error(serverError);
   } catch (err) {
-    // Backend not running or network error — fall through to simulation
-    console.info('[AI] Backend unavailable, using simulation mode:', err.message);
+    // Network errors (backend not running) → fall through to simulation
+    // API key / auth errors → re-throw so Stage4 shows the real error
+    if (err.message && (
+      err.message.includes('INVALID_API_KEY') ||
+      err.message.includes('API key not configured') ||
+      err.message.includes('authentication_error')
+    )) {
+      throw err;
+    }
+    console.info('[AI] Backend unreachable, using simulation mode:', err.message);
   }
 
   // ── Simulation fallback (no API key or backend unavailable) ─────────────

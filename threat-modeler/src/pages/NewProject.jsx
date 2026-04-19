@@ -955,6 +955,38 @@ function Stage3({ form, setForm }) {
         </div>
       </div>
 
+      {/* Sensitive Data Types */}
+      <div>
+        <p className="text-sm font-semibold text-gray-700 mb-1">Sensitive Data Types</p>
+        <p className="text-xs text-gray-500 mb-3">Select all data types in scope — this directly shapes the threat analysis</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            'PII / Personal Data', 'PHI / Medical Records', 'Financial Data', 'Payment Card Data (PCI)',
+            'Authentication Credentials', 'API Keys / Secrets', 'Intellectual Property',
+            'Industrial Control Data', 'Critical Infrastructure Data', 'Government / Classified',
+            'Supply Chain Data', 'Audit Logs',
+          ].map(item => {
+            const selected = (form.sensitiveData || []).includes(item);
+            return (
+              <button key={item} type="button"
+                onClick={() => setForm(f => ({
+                  ...f,
+                  sensitiveData: selected
+                    ? (f.sensitiveData || []).filter(x => x !== item)
+                    : [...(f.sensitiveData || []), item],
+                }))}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  selected
+                    ? 'bg-purple-600 border-purple-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-purple-300 hover:text-purple-700'
+                }`}>
+                {item}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Threat model methodology */}
       <div>
         <p className="text-sm font-semibold text-gray-700 mb-3">Threat Modelling Methodology</p>
@@ -2036,8 +2068,10 @@ export default function NewProject() {
       };
       if (!project) {
         addProjectWithId(newProject);
-        setProject(newProject);
+      } else {
+        updateProject(newProject);
       }
+      setProject(newProject);
     }
     if (stage === 3) {
       setProject(prev => {

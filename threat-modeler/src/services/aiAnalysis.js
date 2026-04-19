@@ -730,19 +730,22 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
       serverError = errBody.error || serverError;
     } catch { /* body not JSON */ }
 
-    // Detect invalid/expired API key — surface clearly instead of silent fallback
+    // Surface billing/auth errors clearly instead of silent fallback
+    if (serverError.includes('credit balance is too low') || serverError.includes('billing') || serverError.includes('payment')) {
+      throw new Error('BILLING: Your Anthropic account has insufficient credits. Add credits at console.anthropic.com/settings/billing, then re-run the analysis.');
+    }
     if (serverError.includes('authentication_error') || serverError.includes('invalid x-api-key') || serverError.includes('invalid_api_key')) {
       throw new Error('INVALID_API_KEY: The ANTHROPIC_API_KEY in server/.env is invalid or expired. Update it and restart the server.');
     }
-    // Missing key configured on server
     if (serverError.includes('ANTHROPIC_API_KEY')) {
       throw new Error('API key not configured on server — set ANTHROPIC_API_KEY in server/.env and restart.');
     }
     throw new Error(serverError);
   } catch (err) {
     // Network errors (backend not running) → fall through to simulation
-    // API key / auth errors → re-throw so Stage4 shows the real error
+    // Billing / API key errors → re-throw so Stage4 shows the real error
     if (err.message && (
+      err.message.includes('BILLING') ||
       err.message.includes('INVALID_API_KEY') ||
       err.message.includes('API key not configured') ||
       err.message.includes('authentication_error')

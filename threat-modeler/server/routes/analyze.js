@@ -29,6 +29,8 @@ router.post('/', async (req, res) => {
 
   const projectId = project.id;
 
+  console.log('[analyze] Project:', project.name, '| Type:', formData.projectType || 'General', '| Industry:', formData.industry || 'n/a', '| Canvas nodes:', canvasElements.length);
+
   // Build a rich prompt from all available context
   const componentNames = canvasElements
     .filter(e => !['internet_zone','dmz_zone','corporate_lan','ot_ics_zone','cloud_zone','secure_zone'].includes(e.type))
@@ -65,50 +67,58 @@ IT / CLOUD ENVIRONMENT:
 - Technology Stack: ${formData.technologyStack || 'Not specified'}
 - Data Residency: ${formData.dataResidency || 'Not specified'}` : '';
 
+  const diagramContext = componentNames.length > 0
+    ? `\nDIAGRAM COMPONENTS (nodes the user drew on the architecture canvas):\n${componentNames.map(n => `  - ${n}`).join('\n')}`
+    : '';
+
   const prompt = `You are a senior cybersecurity threat modeler specialising in ${isOT ? 'OT/ICS and industrial control systems (IEC 62443, Purdue Model, NERC CIP)' : isIT ? 'IT and cloud security (OWASP, NIST, cloud-native threats)' : 'enterprise security'}. Perform a thorough STRIDE threat model analysis on the following system.
 
-SYSTEM DETAILS:
-- Name: ${project.name}
-- Description: ${project.description || 'Not provided'}
-- Environment Type: ${formData.projectType || 'General IT'}
-- Industry: ${formData.industry || 'Not specified'}
-- Sensitive Data Types: ${(formData.sensitiveData || []).join(', ') || 'None specified'}
-- Compliance Frameworks: ${(formData.complianceFrameworks || []).join(', ') || 'None'}
-- Criticality: ${formData.criticality || 'medium'}
-${otContext}${itContext}
-${componentNames.length > 0 ? `- Diagram Components: ${componentNames.join(', ')}` : ''}
+SYSTEM CONTEXT — read every field carefully, they define the attack surface:
+  Name: ${project.name}
+  Description: ${project.description || 'Not provided'}
+  Environment Type: ${formData.projectType || 'General IT/OT'}
+  Industry Sector: ${formData.industry || 'Not specified'}
+  Business Criticality: ${formData.criticality || 'medium'}
+  Sensitive / Regulated Data in Scope: ${(formData.sensitiveData || []).join(', ') || 'None specified'}
+  Compliance Frameworks Required: ${(formData.complianceFrameworks || []).join(', ') || 'None'}
+${otContext}${itContext}${diagramContext}
 
-Identify exactly 8-12 realistic, specific threats using the STRIDE methodology. Each threat must be directly relevant to this specific system — NOT generic boilerplate.
+THREAT ANALYSIS TASK:
+Generate exactly 8–12 realistic STRIDE threats that are SPECIFIC to the system described above.
+CRITICAL RULES:
+1. Every threat name and description MUST reference details from the system context above (the technology, industry, data types, or components). Generic threats like "SQL injection" or "DDoS" with no system-specific detail are NOT acceptable.
+2. Calibrate likelihood and impact to the specific criticality, industry, and data types of THIS system.
+3. If compliance frameworks are specified, at least 2 threats must relate to gaps against those frameworks.
+4. If diagram components are listed, reference them explicitly in the relevant threat descriptions.
+5. For OT systems: prioritise physical safety impact (SIL levels), protocol-specific attacks, and Purdue zone crossing threats.
+6. For IT/cloud systems: prioritise supply-chain, IAM, and cloud-misconfiguration threats relevant to the stated provider and architecture.
 
-Return ONLY a valid JSON array (no markdown, no explanation) with this exact structure:
+Return ONLY a valid JSON array (no markdown, no explanation):
 [
   {
     "strideCategory": "S",
-    "name": "Short specific threat name",
-    "description": "2-3 sentence technical description specific to this system",
+    "name": "Short specific threat name referencing this system",
+    "description": "2-3 sentence technical description mentioning specific technologies, data types, or components from the system context",
     "likelihood": 4,
     "impact": 4,
-    "rationale": "2-3 sentences explaining why this risk level applies to THIS specific system given its characteristics",
+    "rationale": "2-3 sentences explaining why this score applies to THIS system's industry, criticality, and data types — not generic reasoning",
     "recommendations": [
-      "Specific actionable mitigation step 1",
-      "Specific actionable mitigation step 2",
-      "Specific actionable mitigation step 3"
+      "Specific actionable mitigation referencing this system's stack or protocols",
+      "Second concrete mitigation",
+      "Third concrete mitigation"
     ],
     "residualRiskScore": 8,
     "residualRiskLevel": "MEDIUM",
-    "residualRationale": "1-2 sentences on residual risk after mitigations"
+    "residualRationale": "1-2 sentences on residual risk after mitigations are applied"
   }
 ]
 
-Rules:
-- strideCategory must be one of: S, T, R, I, D, E
-- likelihood and impact must be integers 1-5
-- riskScore = likelihood × impact (you do not need to include this, we compute it)
-- residualRiskScore must be 1-25 and lower than likelihood×impact
-- residualRiskLevel must match residualRiskScore: CRITICAL(≥20), HIGH(≥15), MEDIUM(≥10), LOW(≥5), MINIMAL(<5)
-- Cover multiple STRIDE categories, do not repeat the same category more than 3 times
-- Make threats specific to the system — reference the technology stack, industry, data types, and components
-- Recommendations must be concrete and actionable, not generic advice`;
+Schema rules:
+- strideCategory: one of S, T, R, I, D, E
+- likelihood and impact: integers 1–5
+- residualRiskScore: integer 1–25, must be lower than likelihood×impact
+- residualRiskLevel: CRITICAL(≥20), HIGH(≥15), MEDIUM(≥10), LOW(≥5), MINIMAL(<5)
+- Cover at least 4 different STRIDE categories; no single category repeated more than 3 times`;
 
   try {
     const message = await client.messages.create({

@@ -434,7 +434,7 @@ function getAnchorPoints(el) {
 }
 
 // ─── Shape component (interaction wrapper) ────────────────────────────────────
-function Shape({ el, isSelected, isConnecting, isDragTarget, tool, isDragging, onMouseDown, onDblClick, onConnectClick, onAnchorDown, onMouseUp, editingId, editLabel, onEditChange, onEditCommit }) {
+function Shape({ el, isSelected, isConnecting, isDragTarget, tool, isDragging, onMouseDown, onDblClick, onConnectClick, onAnchorDown, onMouseUp, onDrop, onDragOver, editingId, editLabel, onEditChange, onEditCommit }) {
   const def = ELEMENT_DEFS[el.type] || { color: '#6b7280', label: el.type };
   const isZone = ZONE_TYPES.has(el.type);
   const cursor = tool === 'connect' ? 'crosshair' : 'move';
@@ -475,7 +475,8 @@ function Shape({ el, isSelected, isConnecting, isDragTarget, tool, isDragging, o
 
   return (
     <g className={showAnchorsClass} onMouseDown={handleDown} onDoubleClick={handleDbl} onClick={handleClick}
-       onMouseUp={handleUp} style={{ cursor }}>
+       onMouseUp={handleUp} style={{ cursor }}
+       onDragOver={onDragOver} onDrop={onDrop}>
       {/* Selection box */}
       {isSelected && !isZone && (
         <rect x={x-5} y={y-5} width={w+10} height={h+10} rx={6}
@@ -762,8 +763,14 @@ export default function ThreatModelCanvas({ value, onChange }) {
   };
 
   // ── Palette drag ────────────────────────────────────────────────────────────
-  const onPaletteDragStart = (e, type) => e.dataTransfer.setData('elementType', type);
-  const onCanvasDragOver   = (e) => e.preventDefault();
+  const onPaletteDragStart = (e, type) => {
+    e.dataTransfer.setData('elementType', type);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+  const onCanvasDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
   const onCanvasDrop = (e) => {
     const type = e.dataTransfer.getData('elementType');
     if (!type || !ELEMENT_DEFS[type]) return;
@@ -1210,6 +1217,8 @@ export default function ThreatModelCanvas({ value, onChange }) {
                     onConnectClick={onConnectClick}
                     onAnchorDown={onAnchorDown}
                     onMouseUp={onElementMouseUp}
+                    onDragOver={onCanvasDragOver}
+                    onDrop={onCanvasDrop}
                     editingId={editing?.id}
                     editLabel={editing?.label ?? ''}
                     onEditChange={onEditChange}

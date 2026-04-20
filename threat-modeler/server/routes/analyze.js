@@ -83,51 +83,26 @@ SYSTEM CONTEXT — read every field carefully, they define the attack surface:
   Compliance Frameworks Required: ${(formData.complianceFrameworks || []).join(', ') || 'None'}
 ${otContext}${itContext}${diagramContext}
 
-THREAT ANALYSIS TASK:
-Generate exactly 8–12 realistic STRIDE threats that are SPECIFIC to the system described above.
-CRITICAL RULES:
-1. Every threat name and description MUST reference details from the system context above (the technology, industry, data types, or components). Generic threats like "SQL injection" or "DDoS" with no system-specific detail are NOT acceptable.
-2. Calibrate likelihood and impact to the specific criticality, industry, and data types of THIS system.
-3. If compliance frameworks are specified, at least 2 threats must relate to gaps against those frameworks.
-4. If diagram components are listed, reference them explicitly in the relevant threat descriptions.
-5. For OT systems: prioritise physical safety impact (SIL levels), protocol-specific attacks, and Purdue zone crossing threats.
-6. For IT/cloud systems: prioritise supply-chain, IAM, and cloud-misconfiguration threats relevant to the stated provider and architecture.
+TASK: Generate 6–8 STRIDE threats specific to this system. Be concise — keep all text fields short.
+Rules:
+- Reference this system's technology/industry/data in every threat (no generic boilerplate)
+- Calibrate scores to this system's criticality and data types
+- Cover at least 4 STRIDE categories
 
-Return ONLY a valid JSON array (no markdown, no explanation):
-[
-  {
-    "strideCategory": "S",
-    "name": "Short specific threat name referencing this system",
-    "description": "2-3 sentence technical description mentioning specific technologies, data types, or components from the system context",
-    "likelihood": 4,
-    "impact": 4,
-    "rationale": "2-3 sentences explaining why this score applies to THIS system's industry, criticality, and data types — not generic reasoning",
-    "recommendations": [
-      "Specific actionable mitigation referencing this system's stack or protocols",
-      "Second concrete mitigation",
-      "Third concrete mitigation"
-    ],
-    "residualRiskScore": 8,
-    "residualRiskLevel": "MEDIUM",
-    "residualRationale": "1-2 sentences on residual risk after mitigations are applied"
-  }
-]
+Return ONLY a JSON array, no markdown:
+[{"strideCategory":"S","name":"<10 words>","description":"<1-2 sentences referencing this system>","likelihood":4,"impact":4,"rationale":"<1-2 sentences specific to this system>","recommendations":["<action 1>","<action 2>"],"residualRiskScore":8,"residualRiskLevel":"MEDIUM","residualRationale":"<1 sentence>"}]
 
-Schema rules:
-- strideCategory: one of S, T, R, I, D, E
-- likelihood and impact: integers 1–5
-- residualRiskScore: integer 1–25, must be lower than likelihood×impact
-- residualRiskLevel: CRITICAL(≥20), HIGH(≥15), MEDIUM(≥10), LOW(≥5), MINIMAL(<5)
-- Cover at least 4 different STRIDE categories; no single category repeated more than 3 times`;
+strideCategory: S|T|R|I|D|E. likelihood/impact: 1-5. residualRiskScore < likelihood×impact. residualRiskLevel: CRITICAL≥20,HIGH≥15,MEDIUM≥10,LOW≥5,MINIMAL<5`;
 
   try {
     const message = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 4096,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3500,
       messages: [{ role: 'user', content: prompt }],
     });
 
     const rawText = message.content[0]?.text || '[]';
+    console.log('[analyze] stop_reason:', message.stop_reason, '| tokens:', message.usage?.output_tokens);
 
     // Parse — strip any markdown fences if model adds them despite instructions
     const jsonStr = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
@@ -168,7 +143,7 @@ Schema rules:
         residualRationale: String(t.residualRationale || ''),
         attackVector:     'Network',
         aiGenerated:      true,
-        aiModel:          'claude-opus-4-6',
+        aiModel:          'claude-sonnet-4-6',
         createdAt:        new Date().toISOString(),
       };
     });

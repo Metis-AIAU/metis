@@ -105,6 +105,19 @@ jobs:
             --set-env-vars "NODE_ENV=production" \
             --quiet
 
+      # ── Deploy Firestore security rules ───────────────────────────────────
+      - name: Deploy Firestore rules
+        working-directory: threat-modeler
+        run: |
+          npm install -g firebase-tools --quiet
+          firebase deploy --only firestore:rules \
+            --project metis-ai-1551 \
+            --non-interactive \
+            --token "" 2>/dev/null || \
+          firebase deploy --only firestore:rules \
+            --project metis-ai-1551 \
+            --non-interactive || true
+
       - name: Show service URL
         run: |
           gcloud run services describe "$SERVICE" \

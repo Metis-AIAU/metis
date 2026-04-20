@@ -80,7 +80,7 @@ function HexPattern() {
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
-  const { state } = useThreatContext();
+  const { state, syncError, syncStatus } = useThreatContext();
   const { user, logout, isOffline } = useAuth();
   const { team } = useTeam();
 
@@ -309,6 +309,16 @@ export default function Layout({ children }) {
         className="flex-1 transition-all duration-300 min-h-screen"
         style={{ marginLeft: sidebarOpen ? 256 : 64 }}
       >
+        {syncError && (
+          <div className="flex items-start gap-3 px-5 py-3 text-sm"
+            style={{ background: '#7f1d1d', borderBottom: '1px solid #991b1b', color: '#fca5a5' }}>
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#f87171' }} />
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold text-red-200">Firestore sync failed — data is saved locally only. </span>
+              <span className="font-mono text-xs opacity-80">{syncError}</span>
+            </div>
+          </div>
+        )}
         {children}
       </main>
     </div>

@@ -742,17 +742,16 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
     }
     throw new Error(serverError);
   } catch (err) {
-    // Network errors (backend not running) → fall through to simulation
-    // Billing / API key errors → re-throw so Stage4 shows the real error
-    if (err.message && (
-      err.message.includes('BILLING') ||
-      err.message.includes('INVALID_API_KEY') ||
-      err.message.includes('API key not configured') ||
-      err.message.includes('authentication_error')
-    )) {
+    // Only fall to simulation for genuine network errors (backend not running at all)
+    // TypeError = fetch() itself failed (no connection)
+    if (err instanceof TypeError) {
+      console.info('[AI] Backend unreachable — using simulation mode');
+    } else if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      throw new Error('Analysis timed out (60s). Check the server is running and try again.');
+    } else {
+      // Re-throw billing, auth, server errors, parse failures — show real message to user
       throw err;
     }
-    console.info('[AI] Backend unreachable, using simulation mode:', err.message);
   }
 
   // ── Simulation fallback (no API key or backend unavailable) ─────────────

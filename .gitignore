@@ -41,3 +41,4 @@ Icon
 .env.*.local
 threat-modeler/.env
 threat-modeler/server/.env
+threat-modeler/server/.env

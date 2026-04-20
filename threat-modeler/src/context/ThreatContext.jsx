@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, useRef } from 'react';
+import { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { sampleData } from '../data/sampleData';
@@ -268,6 +268,8 @@ export function ThreatProvider({ children }) {
   const { team, teamThreatDocRef } = useTeam();
 
   const [state, dispatch] = useReducer(threatReducer, initialState);
+  const [syncError, setSyncError] = useState(null);
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
   const syncTimer      = useRef(null);
   const hasSynced      = useRef(false);
   const isRemoteUpdate = useRef(false);
@@ -384,8 +386,19 @@ export function ThreatProvider({ children }) {
 
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
-      setDoc(userDocRef(user.id), { ...dataToSave, _updatedAt: serverTimestamp() }, { merge: false })
-        .catch(err => console.warn('[ThreatContext] personal doc sync failed:', err.message));
+      setSyncStatus('syncing');
+      try {
+        await setDoc(userDocRef(user.id), { ...dataToSave, _updatedAt: serverTimestamp() }, { merge: false });
+        setSyncError(null);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.warn('[ThreatContext] personal doc sync failed:', err.message);
+        const msg = err.code === 'permission-denied'
+          ? 'Firestore rules not deployed — run: firebase deploy --only firestore:rules --project metis-ai-1551'
+          : err.message;
+        setSyncError(msg);
+        setSyncStatus('error');
+      }
 
       if (team && teamThreatDocRef) {
         const teamPayload = {};
@@ -533,7 +546,7 @@ export function ThreatProvider({ children }) {
   };
 
   return (
-    <ThreatContext.Provider value={{ state, ...actions, ...selectors }}>
+    <ThreatContext.Provider value={{ state, syncError, syncStatus, ...actions, ...selectors }}>
       {children}
     </ThreatContext.Provider>
   );

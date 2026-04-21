@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, Save, Sparkles, Loader2, CheckCircle2, AlertTriangle,
-  Info, ChevronDown, FolderKanban, LayoutTemplate,
+  Info, ChevronDown, FolderKanban, LayoutTemplate, ShieldCheck,
 } from 'lucide-react';
 import { useThreatContext, STRIDE_CATEGORIES, RISK_LEVELS } from '../context/ThreatContext';
 import ThreatModelCanvas from '../components/ThreatModelCanvas';
@@ -36,6 +36,7 @@ export default function Diagram() {
   const [diagramData, setDiagramData] = useState({ elements: [], connections: [] });
   const [analysisState, setAnalysisState] = useState({ status: 'idle', progress: null, error: null });
   const [threatRows, setThreatRows] = useState([]);
+  const [expandedThreat, setExpandedThreat] = useState(null);
   const [appliedIds, setAppliedIds] = useState(new Set());
   const [saved, setSaved] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
@@ -260,48 +261,80 @@ export default function Diagram() {
                   <div className="flex-1 overflow-y-auto p-3 space-y-2">
                     {threatRows.map(row => {
                       const applied = appliedIds.has(row.id);
+                      const recs = Array.isArray(row.recommendations) ? row.recommendations : [];
+                      const isExpanded = expandedThreat === row.id;
                       return (
                         <div
                           key={row.id}
-                          className={`p-3 rounded-lg border text-sm transition-all ${
+                          className={`rounded-lg border text-sm transition-all ${
                             applied
                               ? 'bg-emerald-500/10 border-emerald-500/30'
                               : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-600'
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                                {[row.strideCategory || row.stride?.[0]].filter(Boolean).map(s => (
-                                  <span key={s} className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{
-                                    backgroundColor: (STRIDE_CATEGORIES[s]?.color || '#6b7280') + '25',
-                                    color: STRIDE_CATEGORIES[s]?.color || '#6b7280',
-                                  }}>{s}</span>
-                                ))}
-                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded font-semibold" style={{
-                                  backgroundColor: RISK_LEVELS[row.riskLevel || row.risk]?.bgColor || '#f3f4f6',
-                                  color: RISK_LEVELS[row.riskLevel || row.risk]?.color || '#374151',
-                                }}>{row.riskLevel || row.risk}</span>
+                          {/* Threat header */}
+                          <div className="p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                                  {[row.strideCategory || row.stride?.[0]].filter(Boolean).map(s => (
+                                    <span key={s} className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded" style={{
+                                      backgroundColor: (STRIDE_CATEGORIES[s]?.color || '#6b7280') + '25',
+                                      color: STRIDE_CATEGORIES[s]?.color || '#6b7280',
+                                    }}>{s}</span>
+                                  ))}
+                                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded font-semibold" style={{
+                                    backgroundColor: RISK_LEVELS[row.riskLevel || row.risk]?.bgColor || '#f3f4f6',
+                                    color: RISK_LEVELS[row.riskLevel || row.risk]?.color || '#374151',
+                                  }}>{row.riskLevel || row.risk}</span>
+                                </div>
+                                <p className="text-sm font-medium text-slate-200 leading-snug">{row.name || row.threat}</p>
+                                {(row.rationale || row.description) && (
+                                  <p className="text-[11px] text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">{row.rationale || row.description}</p>
+                                )}
                               </div>
-                              <p className="text-sm font-medium text-slate-200 leading-snug">{row.name || row.threat}</p>
-                              {(row.rationale || row.description) && (
-                                <p className="text-[11px] text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">{row.rationale || row.description}</p>
-                              )}
+                              <button
+                                onClick={() => applyThreatRow(row)}
+                                disabled={applied}
+                                className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-mono font-medium transition-all uppercase tracking-wider ${
+                                  applied
+                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                                }`}
+                              >
+                                {applied ? (
+                                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Added</span>
+                                ) : 'Apply'}
+                              </button>
                             </div>
-                            <button
-                              onClick={() => applyThreatRow(row)}
-                              disabled={applied}
-                              className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-mono font-medium transition-all uppercase tracking-wider ${
-                                applied
-                                  ? 'bg-emerald-500/20 text-emerald-400'
-                                  : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
-                              }`}
-                            >
-                              {applied ? (
-                                <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Added</span>
-                              ) : 'Apply'}
-                            </button>
+
+                            {/* Toggle recommendations */}
+                            {recs.length > 0 && (
+                              <button
+                                onClick={() => setExpandedThreat(isExpanded ? null : row.id)}
+                                className="mt-2 flex items-center gap-1.5 text-[10px] font-mono text-violet-400 hover:text-violet-300 transition-colors"
+                              >
+                                <ShieldCheck className="w-3 h-3" />
+                                <span>{recs.length} control{recs.length > 1 ? 's' : ''}</span>
+                                <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                            )}
                           </div>
+
+                          {/* Controls recommendations */}
+                          {isExpanded && recs.length > 0 && (
+                            <div className="px-3 pb-3 border-t border-slate-700/40 pt-2.5">
+                              <p className="text-[9px] font-mono text-slate-500 uppercase tracking-widest mb-2">Control Recommendations</p>
+                              <ul className="space-y-1.5">
+                                {recs.map((rec, i) => (
+                                  <li key={i} className="flex items-start gap-2">
+                                    <span className="flex-shrink-0 w-4 h-4 rounded-full bg-violet-500/15 text-violet-400 text-[9px] font-mono font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                                    <span className="text-[11px] text-slate-300 leading-relaxed">{rec}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

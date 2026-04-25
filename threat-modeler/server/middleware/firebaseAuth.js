@@ -17,6 +17,13 @@ async function verifyFirebaseToken(req, res, next) {
     req.user = { uid: decoded.uid, email: decoded.email };
     next();
   } catch (err) {
+    const isCredentialError = err.message?.includes('default credentials') ||
+      err.message?.includes('service account') ||
+      err.code === 'app/invalid-credential';
+    if (isCredentialError) {
+      console.error('[firebaseAuth] Firebase Admin credentials not configured. Set FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY in server/.env for local dev.');
+      return res.status(500).json({ error: 'Server misconfigured — Firebase Admin credentials missing. See server logs.' });
+    }
     return res.status(401).json({ error: 'Unauthorized — invalid or expired token' });
   }
 }

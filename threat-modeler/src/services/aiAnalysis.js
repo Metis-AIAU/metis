@@ -742,19 +742,16 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
     }
     throw new Error(serverError);
   } catch (err) {
-    // Only fall to simulation for genuine network errors (backend not running at all)
-    // TypeError = fetch() itself failed (no connection)
-    if (err instanceof TypeError) {
-      console.info('[AI] Backend unreachable — using simulation mode');
-    } else if (err.name === 'AbortError' || err.name === 'TimeoutError') {
-      throw new Error('Analysis timed out (60s). Check the server is running and try again.');
-    } else {
-      // Re-throw billing, auth, server errors, parse failures — show real message to user
-      throw err;
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      throw new Error('Analysis timed out. Check the server is running and try again.');
     }
+    if (err instanceof TypeError) {
+      throw new Error('Cannot reach analysis server. Make sure the backend is running (cd server && npm run dev) and try again.');
+    }
+    throw err;
   }
 
-  // ── Simulation fallback (no API key or backend unavailable) ─────────────
+  // ── Dead code — kept only as reference; never reached ────────────────────
   const { id: projectId, name, description, tags } = project;
   const combined = `${name} ${description} ${tags?.join(' ')} ${formData.technologyStack || ''} ${(formData.otProtocols || []).join(' ')} ${(formData.cloudProviders || []).join(' ')}`.toLowerCase();
 

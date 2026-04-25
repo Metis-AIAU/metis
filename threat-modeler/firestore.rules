@@ -2,18 +2,105 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can only read/write their own threat model data
-    match /users/{uid}/{document=**} {
+    // ── Helper functions ────────────────────────────────────────────────────
+
+    function isOrgMember(orgId) {
+      return exists(/databases/$(database)/documents/orgs/$(orgId)/members/$(request.auth.uid));
+    }
+
+    function getOrgMember(orgId) {
+      return get(/databases/$(database)/documents/orgs/$(orgId)/members/$(request.auth.uid)).data;
+    }
+
+    function isOrgWriter(orgId) {
+      return isOrgMember(orgId)
+        && getOrgMember(orgId).role in ['owner', 'admin', 'member']
+        && getOrgMember(orgId).get('status', 'active') != 'removed';
+    }
+
+    function isOrgAdmin(orgId) {
+      return isOrgMember(orgId)
+        && getOrgMember(orgId).role in ['owner', 'admin']
+        && getOrgMember(orgId).get('status', 'active') != 'removed';
+    }
+
+    function isOrgOwner(orgId) {
+      return isOrgMember(orgId)
+        && getOrgMember(orgId).role == 'owner';
+    }
+
+    // ── User profile ────────────────────────────────────────────────────────
+    match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Team data: team members can read; only the owner can write
+    // ── User's denormalized org membership list ─────────────────────────────
+    match /users/{uid}/orgs/{orgId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Org document ────────────────────────────────────────────────────────
+    match /orgs/{orgId} {
+      // Any authenticated user can create an org (personal org on register)
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // Only members can read
+      allow read: if request.auth != null && isOrgMember(orgId);
+
+      // Admins can update metadata; owners can delete
+      allow update: if request.auth != null && isOrgAdmin(orgId);
+      allow delete: if request.auth != null && isOrgOwner(orgId);
+    }
+
+    // ── Org data (threatData, complianceState) ──────────────────────────────
+    match /orgs/{orgId}/data/{docId} {
+      allow read:  if request.auth != null && isOrgMember(orgId);
+      allow write: if request.auth != null && isOrgWriter(orgId);
+    }
+
+    // ── Org members ─────────────────────────────────────────────────────────
+    match /orgs/{orgId}/members/{uid} {
+      // All members can read the member list
+      allow read: if request.auth != null && isOrgMember(orgId);
+
+      // Owner/admin can add or update members; user can write their own record on join
+      allow create: if request.auth != null
+        && (isOrgAdmin(orgId) || request.auth.uid == uid);
+      allow update: if request.auth != null && isOrgAdmin(orgId);
+      allow delete: if request.auth != null && isOrgAdmin(orgId);
+    }
+
+    // ── Org invites ─────────────────────────────────────────────────────────
+    match /orgs/{orgId}/invites/{inviteId} {
+      // Admins can create and read invites
+      allow read, create: if request.auth != null && isOrgAdmin(orgId);
+
+      // The invited user can update status to 'accepted' (accepting the invite)
+      allow update: if request.auth != null
+        && resource.data.email == request.auth.token.email
+        && request.resource.data.status == 'accepted';
+    }
+
+    // ── Compliance embeddings (read-only from clients) ──────────────────────
+    match /compliance_embeddings/{docId} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
+    // ── Legacy user data paths (read-only for migration) ───────────────────
+    match /users/{uid}/data/{docId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ── Teams (legacy — kept for backward compat) ───────────────────────────
     match /teams/{teamId}/{document=**} {
-      allow read: if request.auth != null;
+      allow read:  if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // Deny everything else
+    // ── Deny everything else ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }

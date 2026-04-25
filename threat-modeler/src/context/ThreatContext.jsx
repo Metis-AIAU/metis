@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { sampleData } from '../data/sampleData';
 import { useAuth } from './AuthContext';
 import { useTeam } from './TeamContext';
+import { useOrg } from './OrgContext';
 import { db } from '../firebase';
 
 const ThreatContext = createContext(null);
@@ -255,9 +256,14 @@ function threatReducer(state, action) {
   }
 }
 
-// ── Doc-ref helper ─────────────────────────────────────────────────────────
+// ── Doc-ref helpers ────────────────────────────────────────────────────────
 
-function userDocRef(uid) {
+function orgDocRef(orgId) {
+  return doc(db, 'orgs', orgId, 'data', 'threatData');
+}
+
+// Migration fallback: read legacy user-scoped doc if org doc is empty
+function legacyUserDocRef(uid) {
   return doc(db, 'users', uid, 'data', 'threatData');
 }
 
@@ -278,6 +284,7 @@ function sanitizeForFirestore(value) {
 export function ThreatProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
   const { team, teamThreatDocRef } = useTeam();
+  const { currentOrg } = useOrg();
 
   const [state, dispatch] = useReducer(threatReducer, initialState);
   const [syncError, setSyncError] = useState(null);
@@ -301,17 +308,33 @@ export function ThreatProvider({ children }) {
 
     hasSynced.current = false;
 
+    if (!currentOrg?.id) {
+      // OrgContext still loading — wait for it
+      return;
+    }
+
     const timeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Firestore load timed out')), 6000)
     );
 
-    Promise.race([getDoc(userDocRef(user.id)), timeout])
+    Promise.race([getDoc(orgDocRef(currentOrg.id)), timeout])
       .then(async (snap) => {
         let baseData = null;
         if (snap.exists()) {
           const { _updatedAt, ...data } = snap.data();
           baseData = data;
         } else {
+          // Migration: check legacy users/{uid}/data/threatData
+          try {
+            const legacySnap = await getDoc(legacyUserDocRef(user.id));
+            if (legacySnap.exists()) {
+              const { _updatedAt, ...legacyData } = legacySnap.data();
+              baseData = legacyData;
+              console.info('[ThreatContext] migrating from legacy user path to org path');
+            }
+          } catch { /* ignore */ }
+        }
+        if (!baseData) {
           try {
             const saved = localStorage.getItem('threatModelingData');
             baseData = saved ? JSON.parse(saved) : sampleData;
@@ -358,7 +381,7 @@ export function ThreatProvider({ children }) {
         hasSynced.current = true;
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isAuthenticated, team?.id]);
+  }, [user?.id, isAuthenticated, team?.id, currentOrg?.id]);
 
   // ── Real-time subscription to team doc ────────────────────────────────
   useEffect(() => {
@@ -393,8 +416,8 @@ export function ThreatProvider({ children }) {
       localStorage.setItem('threatModelingData', JSON.stringify(dataToSave));
     } catch { /* ignore */ }
 
-    if (!isAuthenticated || !user?.id || !hasSynced.current) {
-      console.debug('[ThreatContext] sync skipped — isAuthenticated:', isAuthenticated, 'uid:', user?.id, 'hasSynced:', hasSynced.current);
+    if (!isAuthenticated || !user?.id || !hasSynced.current || !currentOrg?.id) {
+      console.debug('[ThreatContext] sync skipped — isAuthenticated:', isAuthenticated, 'uid:', user?.id, 'hasSynced:', hasSynced.current, 'orgId:', currentOrg?.id);
       return;
     }
     if (isRemoteUpdate.current) return;
@@ -402,14 +425,12 @@ export function ThreatProvider({ children }) {
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
-      const path = `users/${user.id}/data/threatData`;
+      const path = `orgs/${currentOrg.id}/data/threatData`;
       console.debug('[ThreatContext] writing to Firestore:', path);
       try {
-        // Exclude currentProject — redundant with projects array; strip undefined values
-        // that Firestore rejects.
         const { currentProject: _cp, ...firestorePayload } = dataToSave;
         await setDoc(
-          userDocRef(user.id),
+          orgDocRef(currentOrg.id),
           { ...sanitizeForFirestore(firestorePayload), _updatedAt: serverTimestamp() },
           { merge: false }
         );
@@ -447,7 +468,7 @@ export function ThreatProvider({ children }) {
 
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, isAuthenticated, user?.id, team?.id, team?.shareProjects, team?.shareControls]);
+  }, [state, isAuthenticated, user?.id, team?.id, team?.shareProjects, team?.shareControls, currentOrg?.id]);
 
   // ── Exposed actions ────────────────────────────────────────────────────
 

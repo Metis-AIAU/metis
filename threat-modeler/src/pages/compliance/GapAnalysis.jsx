@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useCompliance } from '../../context/ComplianceContext';
 import { COMPLIANCE_STATUS } from '../../data/aescsf';
+import ComplianceAI, { ControlGuidanceButton } from '../../components/ComplianceAI';
 
 const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 const PRIORITY_COLORS = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#9ca3af' };
@@ -82,20 +83,23 @@ function GapCard({ gap, onUpdateStatus }) {
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-100 p-4 bg-gray-50">
-          <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Quick Action – Update Status</p>
-          <div className="flex flex-wrap gap-2">
-            {[COMPLIANCE_STATUS.PARTIALLY_COMPLIANT, COMPLIANCE_STATUS.COMPLIANT, COMPLIANCE_STATUS.NOT_APPLICABLE].map(s => (
-              <button
-                key={s.id}
-                onClick={() => { onUpdateStatus(gap.id, s.id); setExpanded(false); }}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all hover:shadow-sm"
-                style={{ backgroundColor: s.bgColor, color: s.color, borderColor: s.color }}
-              >
-                {s.icon} {s.label}
-              </button>
-            ))}
+        <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Quick Action – Update Status</p>
+            <div className="flex flex-wrap gap-2">
+              {[COMPLIANCE_STATUS.PARTIALLY_COMPLIANT, COMPLIANCE_STATUS.COMPLIANT, COMPLIANCE_STATUS.NOT_APPLICABLE].map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => { onUpdateStatus(gap.id, s.id); setExpanded(false); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all hover:shadow-sm"
+                  style={{ backgroundColor: s.bgColor, color: s.color, borderColor: s.color }}
+                >
+                  {s.icon} {s.label}
+                </button>
+              ))}
+            </div>
           </div>
+          <ControlGuidanceButton controlId={gap.id} />
         </div>
       )}
     </motion.div>
@@ -162,6 +166,16 @@ export default function GapAnalysis() {
             <p className="text-sm text-gray-500">Identify, prioritise, and remediate compliance gaps across all frameworks</p>
           </div>
         </div>
+      </motion.div>
+
+      {/* AI Assistant */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
+        <ComplianceAI
+          organisationContext={{
+            organisationName: state.organisation?.name,
+            sector: state.organisation?.sector,
+          }}
+        />
       </motion.div>
 
       {/* Summary stats */}

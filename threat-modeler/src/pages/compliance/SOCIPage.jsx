@@ -4,6 +4,7 @@ import { FileText, ChevronDown, ChevronUp, Save, Search, AlertTriangle, Info, Sh
 import { useCompliance } from '../../context/ComplianceContext';
 import { SOCI_OBLIGATIONS, SOCI_SECTORS } from '../../data/soci';
 import { COMPLIANCE_STATUS } from '../../data/aescsf';
+import ComplianceAI, { ControlGuidanceButton } from '../../components/ComplianceAI';
 
 const PRIORITY_BADGE = {
   critical: 'bg-red-100 text-red-700',
@@ -159,6 +160,8 @@ function ObligationRow({ control, assessment, onUpdate, isSoNS }) {
                 </div>
               </div>
 
+              <ControlGuidanceButton controlId={control.id} />
+
               {assessment?.lastUpdated && (
                 <p className="text-xs text-gray-400">Last updated: {new Date(assessment.lastUpdated).toLocaleString()}</p>
               )}
@@ -253,6 +256,14 @@ export default function SOCIPage() {
             )}
           </div>
         </div>
+      </motion.div>
+
+      {/* AI Assistant */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
+        <ComplianceAI
+          framework="SOCI"
+          organisationContext={{ organisationName: state.organisation?.name, sector: state.organisation?.sector }}
+        />
       </motion.div>
 
       {/* Score */}

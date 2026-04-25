@@ -4,6 +4,7 @@ import { Zap, ChevronDown, ChevronUp, Save, Search, Info, Shield } from 'lucide-
 import { useCompliance } from '../../context/ComplianceContext';
 import { ASD_FORTIFY_STRATEGIES, ASD_MATURITY_LEVELS } from '../../data/asdFortify';
 import { COMPLIANCE_STATUS } from '../../data/aescsf';
+import ComplianceAI, { ControlGuidanceButton } from '../../components/ComplianceAI';
 
 const MATURITY_ORDER = ['ML0', 'ML1', 'ML2', 'ML3'];
 
@@ -237,6 +238,14 @@ export default function ASDFortifyPage() {
           })}
         </div>
         <p className="text-sm text-gray-500 mt-2">{ASD_MATURITY_LEVELS[targetML]?.description}</p>
+      </motion.div>
+
+      {/* AI Assistant */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
+        <ComplianceAI
+          framework="ASD_FORTIFY"
+          organisationContext={{ organisationName: state.organisation?.name, sector: state.organisation?.sector }}
+        />
       </motion.div>
 
       {/* Score */}

@@ -4,10 +4,8 @@ const cors    = require('cors');
 const path    = require('path');
 const fs      = require('fs');
 
+const { loadSecrets }        = require('./secrets');
 const { verifyFirebaseToken } = require('./middleware/firebaseAuth');
-const analyzeRoutes    = require('./routes/analyze');
-const confluenceRoutes = require('./routes/confluence');
-const advancedRoutes   = require('./routes/advanced');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -21,18 +19,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '2mb' }));
 
-// ── Routes (all require Firebase auth) ───────────────────────────────────
-app.use('/api/analyze',    verifyFirebaseToken, analyzeRoutes);
-app.use('/api/confluence', verifyFirebaseToken, confluenceRoutes);
-app.use('/api/advanced',   verifyFirebaseToken, advancedRoutes);
-
-// Health check (public — used by Cloud Run)
+// ── Health check (public — used by Cloud Run) ────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
-});
-
-app.use('/api', (_req, res) => {
-  res.status(404).json({ error: 'Not found' });
 });
 
 // ── Static frontend (production) ──────────────────────────────────────────
@@ -44,7 +33,24 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-// ── Start ─────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[server] Metis running on port ${PORT}`);
-});
+// ── Async startup: fetch secrets first, then wire routes ─────────────────
+(async () => {
+  await loadSecrets();
+
+  // Routes required AFTER secret is loaded so Anthropic client picks up the key
+  const analyzeRoutes    = require('./routes/analyze');
+  const confluenceRoutes = require('./routes/confluence');
+  const advancedRoutes   = require('./routes/advanced');
+  const complianceRoutes = require('./routes/compliance');
+
+  app.use('/api/analyze',    verifyFirebaseToken, analyzeRoutes);
+  app.use('/api/confluence', verifyFirebaseToken, confluenceRoutes);
+  app.use('/api/advanced',   verifyFirebaseToken, advancedRoutes);
+  app.use('/api/compliance', verifyFirebaseToken, complianceRoutes);
+
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[server] Metis running on port ${PORT}`);
+  });
+})();

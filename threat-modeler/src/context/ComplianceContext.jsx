@@ -5,6 +5,7 @@ import { SOCI_OBLIGATIONS } from '../data/soci';
 import { ASD_FORTIFY_STRATEGIES } from '../data/asdFortify';
 import { E8_STRATEGIES, computeAchievedMaturity } from '../data/essentialEight';
 import { useAuth } from './AuthContext';
+import { useOrg } from './OrgContext';
 import { db } from '../firebase';
 
 const ComplianceContext = createContext(null);
@@ -138,7 +139,11 @@ const STORAGE_KEY = 'ot_compliance_tracker_state';
 
 // ── Firestore document reference helper ───────────────────────────────────
 
-function complianceDocRef(uid) {
+function complianceDocRef(orgId) {
+  return doc(db, 'orgs', orgId, 'data', 'complianceState');
+}
+
+function legacyComplianceDocRef(uid) {
   return doc(db, 'users', uid, 'data', 'complianceState');
 }
 
@@ -146,6 +151,7 @@ function complianceDocRef(uid) {
 
 export function ComplianceProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
+  const { currentOrg } = useOrg();
 
   const [state, dispatch] = useReducer(complianceReducer, INITIAL_STATE, (initial) => {
     // Seed from localStorage while Firestore loads
@@ -162,15 +168,25 @@ export function ComplianceProvider({ children }) {
   const [hasPendingMigration, setHasPendingMigration] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // ── Load from Firestore when the user logs in ──────────────────────────
+  // ── Load from Firestore when the user logs in (org-scoped) ───────────
   useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !user?.id || !currentOrg?.id) return;
 
-    getDoc(complianceDocRef(user.id))
-      .then(snap => {
+    getDoc(complianceDocRef(currentOrg.id))
+      .then(async snap => {
         if (snap.exists()) {
           dispatch({ type: 'LOAD_STATE', payload: snap.data() });
         } else {
+          // Migration: check legacy users/{uid}/data/complianceState
+          try {
+            const legacySnap = await getDoc(legacyComplianceDocRef(user.id));
+            if (legacySnap.exists()) {
+              console.info('[ComplianceContext] migrating from legacy user path to org path');
+              dispatch({ type: 'LOAD_STATE', payload: legacySnap.data() });
+              return;
+            }
+          } catch { /* ignore */ }
+
           // Nothing in Firestore — check if localStorage has meaningful data
           try {
             const local = localStorage.getItem(STORAGE_KEY);
@@ -185,7 +201,7 @@ export function ComplianceProvider({ children }) {
       })
       .catch(err => console.warn('[ComplianceContext] Firestore load failed:', err.message));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isAuthenticated]);
+  }, [user?.id, isAuthenticated, currentOrg?.id]);
 
   // ── Debounced sync: localStorage immediately, Firestore after 1 s idle ──
   const syncTimer = useRef(null);
@@ -194,13 +210,13 @@ export function ComplianceProvider({ children }) {
     // Always persist to localStorage for offline resilience
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
 
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !user?.id || !currentOrg?.id) return;
 
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
       try {
         setIsSyncing(true);
-        await setDoc(complianceDocRef(user.id), {
+        await setDoc(complianceDocRef(currentOrg.id), {
           ...state,
           _updatedAt: serverTimestamp(),
         }, { merge: false });
@@ -213,12 +229,12 @@ export function ComplianceProvider({ children }) {
 
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, isAuthenticated, user?.id]);
+  }, [state, isAuthenticated, user?.id, currentOrg?.id]);
 
   /** Push local data to Firestore (migration flow) */
   async function importLocalData() {
-    if (!user?.id) return;
-    await setDoc(complianceDocRef(user.id), { ...state, _updatedAt: serverTimestamp() }, { merge: false });
+    if (!currentOrg?.id) return;
+    await setDoc(complianceDocRef(currentOrg.id), { ...state, _updatedAt: serverTimestamp() }, { merge: false });
     setHasPendingMigration(false);
   }
 

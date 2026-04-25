@@ -6,7 +6,8 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { v4 as uuidv4 } from 'uuid';
 import { auth, db } from '../firebase';
 
 const AuthContext = createContext(null);
@@ -15,6 +16,38 @@ const AuthContext = createContext(null);
 const APP_ADMIN_EMAIL = 'ariel.egber@gmail.com';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Creates a personal org for a newly registered user.
+ * Called inside register() before returning the profile.
+ */
+async function createPersonalOrg(fbUser, username) {
+  const orgId = uuidv4();
+  const orgName = `${username}'s Organisation`;
+  try {
+    await setDoc(doc(db, 'orgs', orgId), {
+      name: orgName,
+      sector: '',
+      plan: 'free',
+      ownerId: fbUser.uid,
+      createdAt: serverTimestamp(),
+    });
+    await setDoc(doc(db, 'orgs', orgId, 'members', fbUser.uid), {
+      role: 'owner',
+      email: fbUser.email,
+      displayName: username,
+      joinedAt: serverTimestamp(),
+    });
+    await setDoc(doc(db, 'users', fbUser.uid, 'orgs', orgId), {
+      role: 'owner',
+      joinedAt: serverTimestamp(),
+    });
+    localStorage.setItem(`metis_org_${fbUser.uid}`, orgId);
+  } catch (err) {
+    // Non-fatal — OrgOnboarding will prompt the user to create one manually
+    console.warn('[AuthContext] personal org creation failed:', err.message);
+  }
+}
 
 /**
  * Fetches the Firestore user profile (teamId, role, accountType, etc.)
@@ -124,6 +157,9 @@ export function AuthProvider({ children }) {
       createdAt:   serverTimestamp(),
       lastLogin:   serverTimestamp(),
     }).catch(() => {});
+
+    // Auto-create a personal org for every new user
+    await createPersonalOrg(fbUser, username);
 
     const profile = {
       id:          fbUser.uid,

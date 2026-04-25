@@ -11,6 +11,7 @@ import {
 import { useCompliance } from '../../context/ComplianceContext';
 import { E8_STRATEGIES, E8_MATURITY_LEVELS, computeAchievedMaturity } from '../../data/essentialEight';
 import { COMPLIANCE_STATUS } from '../../data/aescsf';
+import ComplianceAI, { ControlGuidanceButton } from '../../components/ComplianceAI';
 
 const ML_ORDER = ['ML1', 'ML2', 'ML3'];
 
@@ -171,6 +172,8 @@ function ControlRow({ control, assessment, onUpdate, isInScope }) {
                     className="w-full text-sm border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400" />
                 </div>
               </div>
+
+              <ControlGuidanceButton controlId={control.id} />
 
               {assessment?.lastUpdated && (
                 <p className="text-xs text-gray-400">Last updated: {new Date(assessment.lastUpdated).toLocaleString()}</p>
@@ -436,6 +439,14 @@ export default function EssentialEightPage() {
           })}
         </div>
         <p className="text-sm text-gray-500 mt-2 ml-1">{E8_MATURITY_LEVELS[targetML]?.description}</p>
+      </motion.div>
+
+      {/* AI Assistant */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
+        <ComplianceAI
+          framework="ESSENTIAL_EIGHT"
+          organisationContext={{ organisationName: state.organisation?.name, sector: state.organisation?.sector }}
+        />
       </motion.div>
 
       {/* Score card */}

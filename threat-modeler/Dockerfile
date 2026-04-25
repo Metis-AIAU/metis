@@ -53,5 +53,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-# node:sqlite requires Node 22+ (introduced in v22.5.0); --experimental-sqlite flag required until v22.15 / v23.4
-CMD ["node", "--experimental-sqlite", "server/index.js"]
+CMD ["node", "server/index.js"]

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { fetchWithAuth } from '../services/fetchWithAuth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Printer, FileDown, ExternalLink, AlertTriangle, Shield,
@@ -114,9 +115,8 @@ async function publishToConfluence({ config, project, threats, controls, summary
     body: { storage: { value: body, representation: 'storage' } },
   };
 
-  const resp = await fetch('/api/confluence/page', {
+  const resp = await fetchWithAuth('/api/confluence/page', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ config: { baseUrl, email, apiToken }, payload }),
   });
 

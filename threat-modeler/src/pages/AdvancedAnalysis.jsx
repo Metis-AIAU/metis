@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { fetchWithAuth } from '../services/fetchWithAuth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText, Code2, Map, GitBranch, Loader2, CheckCircle2,
@@ -120,9 +121,8 @@ function FullDocsPanel({ project }) {
       for (const f of docFiles) combined += '\n\n' + await readFileText(f);
       if (!combined.trim()) { setError('Paste document text or upload files.'); setStatus('error'); return; }
 
-      const r = await fetch('/api/advanced/full-docs', {
+      const r = await fetchWithAuth('/api/advanced/full-docs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project, docContent: combined }),
       });
       const data = await r.json();
@@ -256,9 +256,8 @@ function VerifyPanel({ project, threats }) {
     setStatus('loading'); setError(''); setResult(null);
     try {
       const files = await Promise.all(codeFiles.map(async f => ({ name: f.name, content: await readFileText(f) })));
-      const r = await fetch('/api/advanced/verify', {
+      const r = await fetchWithAuth('/api/advanced/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project, threats, codeFiles: files }),
       });
       const data = await r.json();
@@ -400,9 +399,8 @@ function ComplianceMapPanel({ project, threats }) {
     if (!threats.length) { setError('Project has no threats — run AI Analysis first.'); setStatus('error'); return; }
     setStatus('loading'); setError(''); setResult(null);
     try {
-      const r = await fetch('/api/advanced/compliance-map', {
+      const r = await fetchWithAuth('/api/advanced/compliance-map', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project, threats }),
       });
       const data = await r.json();
@@ -544,9 +542,8 @@ function DriftPanel({ project, threats, addThreat }) {
       for (const f of diffFiles) combined += '\n\n' + await readFileText(f);
       if (!combined.trim()) { setError('Paste a git diff or upload changed files.'); setStatus('error'); return; }
 
-      const r = await fetch('/api/advanced/drift', {
+      const r = await fetchWithAuth('/api/advanced/drift', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project, threats, diffContent: combined }),
       });
       const data = await r.json();

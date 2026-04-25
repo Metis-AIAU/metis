@@ -2,6 +2,7 @@
 // This service can be connected to any AI backend (OpenAI, Anthropic, Azure OpenAI, etc.)
 
 import { v4 as uuidv4 } from 'uuid';
+import { fetchWithAuth } from './fetchWithAuth';
 
 // Configuration for AI provider
 const AI_CONFIG = {
@@ -701,9 +702,8 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
   // ── Try real Claude API via backend proxy first ──────────────────────────
   onProgress?.({ step: 1, total: 4, message: 'Sending system context to Claude AI...' });
   try {
-    const response = await fetch('/api/analyze', {
+    const response = await fetchWithAuth('/api/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project, formData, canvasElements }),
       signal: AbortSignal.timeout(120_000),
     });

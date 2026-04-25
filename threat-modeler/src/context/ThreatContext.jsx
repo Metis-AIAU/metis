@@ -261,6 +261,18 @@ function userDocRef(uid) {
   return doc(db, 'users', uid, 'data', 'threatData');
 }
 
+// Firestore rejects `undefined` values; replace them with `null` recursively.
+// Skip class instances (Firestore FieldValue sentinels, Dates, etc.).
+function sanitizeForFirestore(value) {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(sanitizeForFirestore);
+  if (value.constructor !== Object) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([k, v]) => [k, sanitizeForFirestore(v)])
+  );
+}
+
 // ── Provider ───────────────────────────────────────────────────────────────
 
 export function ThreatProvider({ children }) {
@@ -381,18 +393,31 @@ export function ThreatProvider({ children }) {
       localStorage.setItem('threatModelingData', JSON.stringify(dataToSave));
     } catch { /* ignore */ }
 
-    if (!isAuthenticated || !user?.id || !hasSynced.current) return;
+    if (!isAuthenticated || !user?.id || !hasSynced.current) {
+      console.debug('[ThreatContext] sync skipped — isAuthenticated:', isAuthenticated, 'uid:', user?.id, 'hasSynced:', hasSynced.current);
+      return;
+    }
     if (isRemoteUpdate.current) return;
 
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
       setSyncStatus('syncing');
+      const path = `users/${user.id}/data/threatData`;
+      console.debug('[ThreatContext] writing to Firestore:', path);
       try {
-        await setDoc(userDocRef(user.id), { ...dataToSave, _updatedAt: serverTimestamp() }, { merge: false });
+        // Exclude currentProject — redundant with projects array; strip undefined values
+        // that Firestore rejects.
+        const { currentProject: _cp, ...firestorePayload } = dataToSave;
+        await setDoc(
+          userDocRef(user.id),
+          { ...sanitizeForFirestore(firestorePayload), _updatedAt: serverTimestamp() },
+          { merge: false }
+        );
+        console.debug('[ThreatContext] Firestore write success:', path);
         setSyncError(null);
         setSyncStatus('synced');
       } catch (err) {
-        console.warn('[ThreatContext] personal doc sync failed:', err.message);
+        console.error('[ThreatContext] Firestore write FAILED:', err.code, err.message);
         const msg = err.code === 'permission-denied'
           ? 'Firestore rules not deployed — run: firebase deploy --only firestore:rules --project metis-ai-1551'
           : err.message;
@@ -414,7 +439,7 @@ export function ThreatProvider({ children }) {
         }
         if (Object.keys(teamPayload).length > 0) {
           lastTeamWrite.current = Date.now();
-          setDoc(teamThreatDocRef, { ...teamPayload, _updatedAt: serverTimestamp() }, { merge: true })
+          setDoc(teamThreatDocRef, { ...sanitizeForFirestore(teamPayload), _updatedAt: serverTimestamp() }, { merge: true })
             .catch(err => console.warn('[ThreatContext] team doc sync failed:', err.message));
         }
       }

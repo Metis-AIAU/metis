@@ -5,6 +5,10 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
+  sendEmailVerification,
+  updatePassword as fbUpdatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
@@ -55,27 +59,30 @@ async function createPersonalOrg(fbUser, username) {
  */
 async function loadUserProfile(fbUser) {
   const isAppAdmin = fbUser.email?.toLowerCase() === APP_ADMIN_EMAIL;
+  // App admin bypasses email verification requirement
+  const emailVerified = fbUser.emailVerified || isAppAdmin;
   try {
     const snap = await getDoc(doc(db, 'users', fbUser.uid));
     const profile = snap.exists() ? snap.data() : {};
     return {
-      id:          fbUser.uid,
-      email:       fbUser.email,
-      username:    profile.username || fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-      accountType: profile.accountType || 'individual',
-      teamId:      profile.teamId   || null,
-      teamRole:    profile.teamRole || null,
+      id:            fbUser.uid,
+      email:         fbUser.email,
+      emailVerified,
+      username:      profile.username || fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+      accountType:   profile.accountType || 'individual',
+      teamId:        profile.teamId   || null,
+      teamRole:      profile.teamRole || null,
       isAppAdmin,
     };
   } catch {
-    // Firestore unavailable — build minimal profile from Auth only
     return {
-      id:          fbUser.uid,
-      email:       fbUser.email,
-      username:    fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-      accountType: 'individual',
-      teamId:      null,
-      teamRole:    null,
+      id:            fbUser.uid,
+      email:         fbUser.email,
+      emailVerified,
+      username:      fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+      accountType:   'individual',
+      teamId:        null,
+      teamRole:      null,
       isAppAdmin,
     };
   }
@@ -158,16 +165,24 @@ export function AuthProvider({ children }) {
       lastLogin:   serverTimestamp(),
     }).catch(() => {});
 
-    // Auto-create a personal org for every new user
-    await createPersonalOrg(fbUser, username);
+    // Auto-create personal org — skip for join-team (they'll accept an invite via OrgOnboarding)
+    if (accountType !== 'join-team') {
+      await createPersonalOrg(fbUser, username);
+    }
+
+    // Send verification email (non-blocking — admin skips)
+    if (!isAppAdmin) {
+      sendEmailVerification(fbUser).catch(() => {});
+    }
 
     const profile = {
-      id:          fbUser.uid,
+      id:            fbUser.uid,
       email,
+      emailVerified: isAppAdmin, // new users are unverified unless admin
       username,
       accountType,
-      teamId:      null,
-      teamRole:    null,
+      teamId:        null,
+      teamRole:      null,
       isAppAdmin,
     };
     setUser(profile);
@@ -177,7 +192,56 @@ export function AuthProvider({ children }) {
   /** Sign out */
   const logout = useCallback(async () => {
     await signOut(auth);
-    // AuthStateChanged listener will clear user state automatically
+  }, []);
+
+  /** Re-send verification email to the current user. */
+  const resendVerification = useCallback(async () => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) return;
+    await sendEmailVerification(fbUser);
+  }, []);
+
+  /**
+   * Reload the Firebase Auth token and check whether the user has now verified
+   * their email. If yes, refreshes the in-memory profile and returns true.
+   */
+  const checkEmailVerified = useCallback(async () => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) return false;
+    await fbUser.reload();
+    const refreshed = auth.currentUser;
+    if (refreshed?.emailVerified) {
+      const profile = await loadUserProfile(refreshed);
+      setUser(profile);
+      return true;
+    }
+    return false;
+  }, []);
+
+  /** Update the user's display name in Firebase Auth and Firestore. */
+  const updateDisplayName = useCallback(async (name) => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) throw new Error('Not authenticated');
+    const trimmed = name.trim();
+    await updateProfile(fbUser, { displayName: trimmed });
+    await setDoc(doc(db, 'users', fbUser.uid), { username: trimmed }, { merge: true });
+    setUser(prev => ({ ...prev, username: trimmed }));
+  }, []);
+
+  /**
+   * Re-authenticates with currentPassword then sets newPassword.
+   * Throws a friendly error if the current password is wrong.
+   */
+  const updateUserPassword = useCallback(async (currentPassword, newPassword) => {
+    const fbUser = auth.currentUser;
+    if (!fbUser) throw new Error('Not authenticated');
+    const credential = EmailAuthProvider.credential(fbUser.email, currentPassword);
+    try {
+      await reauthenticateWithCredential(fbUser, credential);
+    } catch {
+      throw new Error('Current password is incorrect.');
+    }
+    await fbUpdatePassword(fbUser, newPassword);
   }, []);
 
   const value = {
@@ -189,6 +253,10 @@ export function AuthProvider({ children }) {
     register,
     logout,
     refreshUserProfile,
+    resendVerification,
+    checkEmailVerified,
+    updateDisplayName,
+    updateUserPassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

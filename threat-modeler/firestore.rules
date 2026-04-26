@@ -94,10 +94,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // ── Teams (legacy — kept for backward compat) ───────────────────────────
+    // ── Teams (legacy — read-only for data migration, no new writes) ────────
     match /teams/{teamId}/{document=**} {
       allow read:  if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if false;
     }
 
     // ── Deny everything else ────────────────────────────────────────────────

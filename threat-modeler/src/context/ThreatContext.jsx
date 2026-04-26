@@ -3,7 +3,6 @@ import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/fires
 import { v4 as uuidv4 } from 'uuid';
 import { sampleData } from '../data/sampleData';
 import { useAuth } from './AuthContext';
-import { useTeam } from './TeamContext';
 import { useOrg } from './OrgContext';
 import { db } from '../firebase';
 
@@ -58,6 +57,9 @@ const ACTIONS = {
   ADD_DATA_FLOW:              'ADD_DATA_FLOW',
   UPDATE_DATA_FLOW:           'UPDATE_DATA_FLOW',
   DELETE_DATA_FLOW:           'DELETE_DATA_FLOW',
+  ADD_FLOW_PATTERN:           'ADD_FLOW_PATTERN',
+  UPDATE_FLOW_PATTERN:        'UPDATE_FLOW_PATTERN',
+  DELETE_FLOW_PATTERN:        'DELETE_FLOW_PATTERN',
   LINK_CONTROL_TO_THREAT:     'LINK_CONTROL_TO_THREAT',
   UNLINK_CONTROL_FROM_THREAT: 'UNLINK_CONTROL_FROM_THREAT',
   IMPORT_AI_RESULTS:          'IMPORT_AI_RESULTS',
@@ -72,6 +74,7 @@ const initialState = {
   controls:       [],
   assets:         [],
   dataFlows:      [],
+  flowPatterns:   [],
   isLoading:      true,
 };
 
@@ -215,6 +218,23 @@ function threatReducer(state, action) {
     case ACTIONS.DELETE_DATA_FLOW:
       return { ...state, dataFlows: state.dataFlows.filter(d => d.id !== action.payload) };
 
+    case ACTIONS.ADD_FLOW_PATTERN:
+      return {
+        ...state,
+        flowPatterns: [...(state.flowPatterns || []), { ...action.payload, id: uuidv4(), createdAt: new Date().toISOString() }],
+      };
+
+    case ACTIONS.UPDATE_FLOW_PATTERN:
+      return {
+        ...state,
+        flowPatterns: (state.flowPatterns || []).map(p =>
+          p.id === action.payload.id ? { ...p, ...action.payload, updatedAt: new Date().toISOString() } : p
+        ),
+      };
+
+    case ACTIONS.DELETE_FLOW_PATTERN:
+      return { ...state, flowPatterns: (state.flowPatterns || []).filter(p => p.id !== action.payload) };
+
     case ACTIONS.LINK_CONTROL_TO_THREAT:
       return {
         ...state,
@@ -283,8 +303,7 @@ function sanitizeForFirestore(value) {
 
 export function ThreatProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
-  const { team, teamThreatDocRef } = useTeam();
-  const { currentOrg } = useOrg();
+  const { currentOrg, canWrite } = useOrg();
 
   const [state, dispatch] = useReducer(threatReducer, initialState);
   const [syncError, setSyncError] = useState(null);
@@ -292,9 +311,9 @@ export function ThreatProvider({ children }) {
   const syncTimer      = useRef(null);
   const hasSynced      = useRef(false);
   const isRemoteUpdate = useRef(false);
-  const lastTeamWrite  = useRef(0);
+  const lastOrgWrite   = useRef(0);
 
-  // ── Initial load ───────────────────────────────────────────────────────
+  // ── Real-time org data subscription ───────────────────────────────────
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
       try {
@@ -306,25 +325,24 @@ export function ThreatProvider({ children }) {
       return;
     }
 
+    if (!currentOrg?.id) return; // wait for OrgContext
+
     hasSynced.current = false;
+    let migrationAttempted = false;
 
-    if (!currentOrg?.id) {
-      // OrgContext still loading — wait for it
-      return;
-    }
+    const unsub = onSnapshot(
+      orgDocRef(currentOrg.id),
+      async (snap) => {
+        // Skip echoes of our own writes (server confirmation of local write)
+        if (hasSynced.current && Date.now() - lastOrgWrite.current < 2500) return;
 
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Firestore load timed out')), 6000)
-    );
-
-    Promise.race([getDoc(orgDocRef(currentOrg.id)), timeout])
-      .then(async (snap) => {
         let baseData = null;
+
         if (snap.exists()) {
           const { _updatedAt, ...data } = snap.data();
           baseData = data;
-        } else {
-          // Migration: check legacy users/{uid}/data/threatData
+        } else if (!migrationAttempted) {
+          migrationAttempted = true;
           try {
             const legacySnap = await getDoc(legacyUserDocRef(user.id));
             if (legacySnap.exists()) {
@@ -334,6 +352,7 @@ export function ThreatProvider({ children }) {
             }
           } catch { /* ignore */ }
         }
+
         if (!baseData) {
           try {
             const saved = localStorage.getItem('threatModelingData');
@@ -343,69 +362,29 @@ export function ThreatProvider({ children }) {
           }
         }
 
-        if (team && teamThreatDocRef) {
-          try {
-            const teamSnap = await getDoc(teamThreatDocRef);
-            if (teamSnap.exists()) {
-              const td = teamSnap.data();
-              if (team.shareProjects) {
-                baseData = {
-                  ...baseData,
-                  projects:  td.projects  || [],
-                  threats:   td.threats   || [],
-                  controls:  td.controls  || [],
-                  assets:    td.assets    || [],
-                  dataFlows: td.dataFlows || [],
-                };
-              }
-              if (team.shareControls) {
-                baseData = { ...baseData, customControlTemplates: td.customControlTemplates || [] };
-              }
-            }
-          } catch (err) {
-            console.warn('[ThreatContext] team doc load failed:', err.message);
-          }
-        }
-
+        // Mark as remote update so the debounced write effect doesn't echo it back
+        isRemoteUpdate.current = true;
         dispatch({ type: ACTIONS.LOAD_DATA, payload: baseData });
         hasSynced.current = true;
-      })
-      .catch((err) => {
-        console.warn('[ThreatContext] initial load failed:', err.message);
-        try {
-          const saved = localStorage.getItem('threatModelingData');
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: saved ? JSON.parse(saved) : sampleData });
-        } catch {
-          dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
-        }
-        hasSynced.current = true;
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isAuthenticated, team?.id, currentOrg?.id]);
-
-  // ── Real-time subscription to team doc ────────────────────────────────
-  useEffect(() => {
-    if (!team || !teamThreatDocRef || (!team.shareProjects && !team.shareControls)) return;
-
-    const unsub = onSnapshot(
-      teamThreatDocRef,
-      (snap) => {
-        if (!snap.exists() || !hasSynced.current) return;
-        if (Date.now() - lastTeamWrite.current < 2500) return;
-
-        isRemoteUpdate.current = true;
-        dispatch({
-          type: ACTIONS.MERGE_TEAM_DATA,
-          payload: { teamData: snap.data(), shareProjects: team.shareProjects, shareControls: team.shareControls },
-        });
         setTimeout(() => { isRemoteUpdate.current = false; }, 100);
       },
-      (err) => console.warn('[ThreatContext] team snapshot error:', err.message)
+      (err) => {
+        console.warn('[ThreatContext] org snapshot error:', err.message);
+        if (!hasSynced.current) {
+          try {
+            const saved = localStorage.getItem('threatModelingData');
+            dispatch({ type: ACTIONS.LOAD_DATA, payload: saved ? JSON.parse(saved) : sampleData });
+          } catch {
+            dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
+          }
+          hasSynced.current = true;
+        }
+      }
     );
 
     return () => unsub();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [team?.id, team?.shareProjects, team?.shareControls, !!teamThreatDocRef]);
+  }, [user?.id, isAuthenticated, currentOrg?.id]);
 
   // ── Debounced sync to Firestore ────────────────────────────────────────
   useEffect(() => {
@@ -429,6 +408,7 @@ export function ThreatProvider({ children }) {
       console.debug('[ThreatContext] writing to Firestore:', path);
       try {
         const { currentProject: _cp, ...firestorePayload } = dataToSave;
+        lastOrgWrite.current = Date.now();
         await setDoc(
           orgDocRef(currentOrg.id),
           { ...sanitizeForFirestore(firestorePayload), _updatedAt: serverTimestamp() },
@@ -446,62 +426,57 @@ export function ThreatProvider({ children }) {
         setSyncStatus('error');
       }
 
-      if (team && teamThreatDocRef) {
-        const teamPayload = {};
-        if (team.shareProjects) {
-          teamPayload.projects  = dataToSave.projects  || [];
-          teamPayload.threats   = dataToSave.threats   || [];
-          teamPayload.controls  = dataToSave.controls  || [];
-          teamPayload.assets    = dataToSave.assets    || [];
-          teamPayload.dataFlows = dataToSave.dataFlows || [];
-        }
-        if (team.shareControls) {
-          teamPayload.customControlTemplates = dataToSave.customControlTemplates || [];
-        }
-        if (Object.keys(teamPayload).length > 0) {
-          lastTeamWrite.current = Date.now();
-          setDoc(teamThreatDocRef, { ...sanitizeForFirestore(teamPayload), _updatedAt: serverTimestamp() }, { merge: true })
-            .catch(err => console.warn('[ThreatContext] team doc sync failed:', err.message));
-        }
-      }
     }, 1500);
 
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, isAuthenticated, user?.id, team?.id, team?.shareProjects, team?.shareControls, currentOrg?.id]);
+  }, [state, isAuthenticated, user?.id, currentOrg?.id]);
 
   // ── Exposed actions ────────────────────────────────────────────────────
+
+  function requireWrite() {
+    if (!canWrite) throw new Error('You have read-only access to this organisation.');
+  }
 
   const actions = {
     setCurrentProject: (project) => dispatch({ type: ACTIONS.SET_CURRENT_PROJECT, payload: project }),
 
-    addProject:       (project) => dispatch({ type: ACTIONS.ADD_PROJECT,         payload: project }),
-    addProjectWithId: (project) => dispatch({ type: ACTIONS.ADD_PROJECT_WITH_ID, payload: project }),
-    updateProject:    (project) => dispatch({ type: ACTIONS.UPDATE_PROJECT,      payload: project }),
-    deleteProject:    (id)      => dispatch({ type: ACTIONS.DELETE_PROJECT,      payload: id }),
+    addProject:       (project) => { requireWrite(); dispatch({ type: ACTIONS.ADD_PROJECT,         payload: project }); },
+    addProjectWithId: (project) => { requireWrite(); dispatch({ type: ACTIONS.ADD_PROJECT_WITH_ID, payload: project }); },
+    updateProject:    (project) => { requireWrite(); dispatch({ type: ACTIONS.UPDATE_PROJECT,      payload: project }); },
+    deleteProject:    (id)      => { requireWrite(); dispatch({ type: ACTIONS.DELETE_PROJECT,      payload: id });      },
 
-    addThreat:    (threat)  => dispatch({ type: ACTIONS.ADD_THREAT,    payload: threat }),
-    updateThreat: (threat)  => dispatch({ type: ACTIONS.UPDATE_THREAT, payload: threat }),
-    deleteThreat: (id)      => dispatch({ type: ACTIONS.DELETE_THREAT, payload: id }),
+    addThreat:    (threat)  => { requireWrite(); dispatch({ type: ACTIONS.ADD_THREAT,    payload: threat });  },
+    updateThreat: (threat)  => { requireWrite(); dispatch({ type: ACTIONS.UPDATE_THREAT, payload: threat });  },
+    deleteThreat: (id)      => { requireWrite(); dispatch({ type: ACTIONS.DELETE_THREAT, payload: id });      },
 
-    addControl:    (control) => dispatch({ type: ACTIONS.ADD_CONTROL,    payload: control }),
-    updateControl: (control) => dispatch({ type: ACTIONS.UPDATE_CONTROL, payload: control }),
-    deleteControl: (id)      => dispatch({ type: ACTIONS.DELETE_CONTROL, payload: id }),
+    addControl:    (control) => { requireWrite(); dispatch({ type: ACTIONS.ADD_CONTROL,    payload: control }); },
+    updateControl: (control) => { requireWrite(); dispatch({ type: ACTIONS.UPDATE_CONTROL, payload: control }); },
+    deleteControl: (id)      => { requireWrite(); dispatch({ type: ACTIONS.DELETE_CONTROL, payload: id });      },
 
-    addAsset:    (asset) => dispatch({ type: ACTIONS.ADD_ASSET,    payload: asset }),
-    updateAsset: (asset) => dispatch({ type: ACTIONS.UPDATE_ASSET, payload: asset }),
-    deleteAsset: (id)    => dispatch({ type: ACTIONS.DELETE_ASSET, payload: id }),
+    addAsset:    (asset) => { requireWrite(); dispatch({ type: ACTIONS.ADD_ASSET,    payload: asset }); },
+    updateAsset: (asset) => { requireWrite(); dispatch({ type: ACTIONS.UPDATE_ASSET, payload: asset }); },
+    deleteAsset: (id)    => { requireWrite(); dispatch({ type: ACTIONS.DELETE_ASSET, payload: id });    },
 
-    addDataFlow:    (dataFlow) => dispatch({ type: ACTIONS.ADD_DATA_FLOW,    payload: dataFlow }),
-    updateDataFlow: (dataFlow) => dispatch({ type: ACTIONS.UPDATE_DATA_FLOW, payload: dataFlow }),
-    deleteDataFlow: (id)       => dispatch({ type: ACTIONS.DELETE_DATA_FLOW, payload: id }),
+    addDataFlow:    (dataFlow) => { requireWrite(); dispatch({ type: ACTIONS.ADD_DATA_FLOW,    payload: dataFlow }); },
+    updateDataFlow: (dataFlow) => { requireWrite(); dispatch({ type: ACTIONS.UPDATE_DATA_FLOW, payload: dataFlow }); },
+    deleteDataFlow: (id)       => { requireWrite(); dispatch({ type: ACTIONS.DELETE_DATA_FLOW, payload: id });       },
 
-    linkControlToThreat: (controlId, threatId) =>
-      dispatch({ type: ACTIONS.LINK_CONTROL_TO_THREAT,     payload: { controlId, threatId } }),
-    unlinkControlFromThreat: (controlId, threatId) =>
-      dispatch({ type: ACTIONS.UNLINK_CONTROL_FROM_THREAT, payload: { controlId, threatId } }),
+    addFlowPattern:    (pattern) => { requireWrite(); dispatch({ type: ACTIONS.ADD_FLOW_PATTERN,    payload: pattern }); },
+    updateFlowPattern: (pattern) => { requireWrite(); dispatch({ type: ACTIONS.UPDATE_FLOW_PATTERN, payload: pattern }); },
+    deleteFlowPattern: (id)      => { requireWrite(); dispatch({ type: ACTIONS.DELETE_FLOW_PATTERN, payload: id });      },
 
-    importAIResults: (results) =>
+    linkControlToThreat: (controlId, threatId) => {
+      requireWrite();
+      dispatch({ type: ACTIONS.LINK_CONTROL_TO_THREAT, payload: { controlId, threatId } });
+    },
+    unlinkControlFromThreat: (controlId, threatId) => {
+      requireWrite();
+      dispatch({ type: ACTIONS.UNLINK_CONTROL_FROM_THREAT, payload: { controlId, threatId } });
+    },
+
+    importAIResults: (results) => {
+      requireWrite();
       dispatch({
         type: ACTIONS.IMPORT_AI_RESULTS,
         payload: {
@@ -510,9 +485,11 @@ export function ThreatProvider({ children }) {
           assets:    results.assets    || [],
           dataFlows: results.dataFlows || [],
         },
-      }),
+      });
+    },
 
     resetToSampleData: () => {
+      requireWrite();
       localStorage.removeItem('threatModelingData');
       dispatch({ type: ACTIONS.LOAD_DATA, payload: sampleData });
     },
@@ -592,7 +569,7 @@ export function ThreatProvider({ children }) {
   };
 
   return (
-    <ThreatContext.Provider value={{ state, syncError, syncStatus, ...actions, ...selectors }}>
+    <ThreatContext.Provider value={{ state, syncError, syncStatus, canWrite, ...actions, ...selectors }}>
       {children}
     </ThreatContext.Provider>
   );

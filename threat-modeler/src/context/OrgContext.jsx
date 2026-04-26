@@ -124,6 +124,16 @@ export function OrgProvider({ children }) {
     return orgId;
   }, [user]);
 
+  /** Update org name and/or sector. Admins and owners only. */
+  const updateOrg = useCallback(async ({ name, sector }) => {
+    if (!currentOrg?.id) throw new Error('No org selected');
+    await setDoc(doc(db, 'orgs', currentOrg.id), { name, sector }, { merge: true });
+    // Update local state immediately — the users/{uid}/orgs snapshot won't catch org-doc changes
+    const updated = { name, sector };
+    setOrgs(prev => prev.map(o => o.id === currentOrg.id ? { ...o, ...updated } : o));
+    setCurrentOrg(prev => ({ ...prev, ...updated }));
+  }, [currentOrg?.id]);
+
   /** Create a pending invite record. Actual acceptance handled client-side via OrgOnboarding. */
   const inviteMember = useCallback(async (email, role = 'member') => {
     if (!currentOrg?.id) throw new Error('No org selected');
@@ -198,6 +208,7 @@ export function OrgProvider({ children }) {
       canAdmin,
       switchOrg,
       createOrg,
+      updateOrg,
       inviteMember,
       acceptInvite,
       removeMember,

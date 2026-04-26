@@ -23,15 +23,61 @@ import {
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
-import { useTeam } from '../context/TeamContext';
+import { useOrg } from '../context/OrgContext';
 
 export default function Settings() {
   const { state, resetToSampleData } = useThreatContext();
-  const { user, isAuthenticated } = useAuth();
-  const { isTeamOwner, isTeamAdmin, team } = useTeam();
+  const { user, isAuthenticated, updateDisplayName, updateUserPassword } = useAuth();
+  const { currentOrg } = useOrg();
   const [exportStatus, setExportStatus] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [showSecrets, setShowSecrets] = useState(false);
+
+  // ── Profile state ──────────────────────────────────────────────────────────
+  const [displayName, setDisplayName] = useState(user?.username || '');
+  const [nameStatus, setNameStatus]   = useState('');
+  const [nameSaving, setNameSaving]   = useState(false);
+
+  const [currentPwd, setCurrentPwd]   = useState('');
+  const [newPwd, setNewPwd]           = useState('');
+  const [confirmPwd, setConfirmPwd]   = useState('');
+  const [pwdStatus, setPwdStatus]     = useState('');
+  const [pwdSaving, setPwdSaving]     = useState(false);
+  const [showPwds, setShowPwds]       = useState(false);
+
+  async function handleSaveName(e) {
+    e.preventDefault();
+    if (!displayName.trim()) return;
+    setNameSaving(true);
+    setNameStatus('');
+    try {
+      await updateDisplayName(displayName.trim());
+      setNameStatus('saved');
+      setTimeout(() => setNameStatus(''), 2500);
+    } catch (err) {
+      setNameStatus(err.message || 'Failed to update name');
+    } finally {
+      setNameSaving(false);
+    }
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    if (newPwd !== confirmPwd) { setPwdStatus('Passwords do not match.'); return; }
+    if (newPwd.length < 6)     { setPwdStatus('New password must be at least 6 characters.'); return; }
+    setPwdSaving(true);
+    setPwdStatus('');
+    try {
+      await updateUserPassword(currentPwd, newPwd);
+      setPwdStatus('saved');
+      setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
+      setTimeout(() => setPwdStatus(''), 2500);
+    } catch (err) {
+      setPwdStatus(err.message || 'Failed to update password');
+    } finally {
+      setPwdSaving(false);
+    }
+  }
 
   // Confluence config — persisted in localStorage per user
   const CONFLUENCE_KEY = 'confluenceConfig';
@@ -152,6 +198,99 @@ export default function Settings() {
       >
         <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500 mt-1">Manage application settings and data</p>
+      </motion.div>
+
+      {/* ── Profile ──────────────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card mb-8"
+      >
+        <div className="flex items-center gap-2 mb-6">
+          <Shield className="w-5 h-5 text-blue-500" />
+          <h2 className="font-semibold text-gray-900">Profile</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Display name */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Display name</h3>
+            <div className="mb-2">
+              <label className="block text-xs text-gray-500 mb-1">Email</label>
+              <p className="text-sm text-gray-800 font-mono bg-gray-50 px-3 py-2 rounded-lg">{user?.email}</p>
+            </div>
+            <form onSubmit={handleSaveName} className="space-y-2">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Display name</label>
+                <input
+                  type="text"
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              {nameStatus && nameStatus !== 'saved' && (
+                <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-1.5">{nameStatus}</p>
+              )}
+              <button
+                type="submit"
+                disabled={nameSaving || !displayName.trim()}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {nameStatus === 'saved'
+                  ? <><CheckCircle2 className="w-4 h-4" /> Saved</>
+                  : nameSaving ? 'Saving…' : <><Save className="w-4 h-4" /> Save name</>
+                }
+              </button>
+            </form>
+          </div>
+
+          {/* Change password */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Change password</h3>
+            <form onSubmit={handleChangePassword} className="space-y-2">
+              {[
+                { label: 'Current password', value: currentPwd, onChange: setCurrentPwd, auto: 'current-password' },
+                { label: 'New password',     value: newPwd,     onChange: setNewPwd,     auto: 'new-password' },
+                { label: 'Confirm new',      value: confirmPwd, onChange: setConfirmPwd,  auto: 'new-password' },
+              ].map(({ label, value, onChange, auto }) => (
+                <div key={label}>
+                  <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                  <div className="relative">
+                    <input
+                      type={showPwds ? 'text' : 'password'}
+                      value={value}
+                      onChange={e => onChange(e.target.value)}
+                      autoComplete={auto}
+                      className="w-full px-3 py-2 pr-9 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowPwds(v => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPwds ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {pwdStatus && pwdStatus !== 'saved' && (
+                <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-1.5">{pwdStatus}</p>
+              )}
+              <button
+                type="submit"
+                disabled={pwdSaving || !currentPwd || !newPwd || !confirmPwd}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {pwdStatus === 'saved'
+                  ? <><CheckCircle2 className="w-4 h-4" /> Updated</>
+                  : pwdSaving ? 'Updating…' : <><Lock className="w-4 h-4" /> Update password</>
+                }
+              </button>
+            </form>
+          </div>
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -399,10 +538,10 @@ export default function Settings() {
                       users/{user?.id ? user.id.slice(0, 8) + '...' : '—'}/data/threatData
                     </code>
                   </span>
-                  {team && (
+                  {currentOrg && (
                     <span>
-                      Team Doc: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
-                        teams/{team.id.slice(0, 8)}...
+                      Org Doc: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                        orgs/{currentOrg.id.slice(0, 8)}...
                       </code>
                     </span>
                   )}

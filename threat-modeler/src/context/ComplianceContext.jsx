@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useState } from 'react';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { AESCSF_FUNCTIONS, COMPLIANCE_STATUS } from '../data/aescsf';
 import { SOCI_OBLIGATIONS } from '../data/soci';
 import { ASD_FORTIFY_STRATEGIES } from '../data/asdFortify';
@@ -151,7 +151,7 @@ function legacyComplianceDocRef(uid) {
 
 export function ComplianceProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
-  const { currentOrg } = useOrg();
+  const { currentOrg, canWrite } = useOrg();
 
   const [state, dispatch] = useReducer(complianceReducer, INITIAL_STATE, (initial) => {
     // Seed from localStorage while Firestore loads
@@ -167,27 +167,42 @@ export function ComplianceProvider({ children }) {
 
   const [hasPendingMigration, setHasPendingMigration] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const isRemoteUpdate = useRef(false);
+  const lastWrite      = useRef(0);
 
-  // ── Load from Firestore when the user logs in (org-scoped) ───────────
+  // ── Real-time org compliance subscription ─────────────────────────────
   useEffect(() => {
     if (!isAuthenticated || !user?.id || !currentOrg?.id) return;
 
-    getDoc(complianceDocRef(currentOrg.id))
-      .then(async snap => {
+    let migrationAttempted = false;
+    let hasSynced = false;
+
+    const unsub = onSnapshot(
+      complianceDocRef(currentOrg.id),
+      async (snap) => {
+        // Skip echoes of our own writes
+        if (hasSynced && Date.now() - lastWrite.current < 2500) return;
+
         if (snap.exists()) {
+          isRemoteUpdate.current = true;
           dispatch({ type: 'LOAD_STATE', payload: snap.data() });
-        } else {
-          // Migration: check legacy users/{uid}/data/complianceState
+          hasSynced = true;
+          setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+        } else if (!migrationAttempted) {
+          migrationAttempted = true;
           try {
             const legacySnap = await getDoc(legacyComplianceDocRef(user.id));
             if (legacySnap.exists()) {
               console.info('[ComplianceContext] migrating from legacy user path to org path');
+              isRemoteUpdate.current = true;
               dispatch({ type: 'LOAD_STATE', payload: legacySnap.data() });
+              hasSynced = true;
+              setTimeout(() => { isRemoteUpdate.current = false; }, 100);
               return;
             }
           } catch { /* ignore */ }
 
-          // Nothing in Firestore — check if localStorage has meaningful data
+          // Nothing in Firestore — check if localStorage has meaningful data to migrate
           try {
             const local = localStorage.getItem(STORAGE_KEY);
             if (local) {
@@ -197,9 +212,13 @@ export function ComplianceProvider({ children }) {
               if (hasData) setHasPendingMigration(true);
             }
           } catch { /* ignore */ }
+          hasSynced = true;
         }
-      })
-      .catch(err => console.warn('[ComplianceContext] Firestore load failed:', err.message));
+      },
+      err => console.warn('[ComplianceContext] Firestore snapshot error:', err.message)
+    );
+
+    return () => unsub();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isAuthenticated, currentOrg?.id]);
 
@@ -211,11 +230,13 @@ export function ComplianceProvider({ children }) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
 
     if (!isAuthenticated || !user?.id || !currentOrg?.id) return;
+    if (isRemoteUpdate.current) return; // don't echo remote updates back to Firestore
 
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(async () => {
       try {
         setIsSyncing(true);
+        lastWrite.current = Date.now();
         await setDoc(complianceDocRef(currentOrg.id), {
           ...state,
           _updatedAt: serverTimestamp(),
@@ -240,6 +261,7 @@ export function ComplianceProvider({ children }) {
 
   // ── Dispatch wrapper — no extra endpoint call needed with Firestore ────
   function dispatchWithSync(action) {
+    if (!canWrite) throw new Error('You have read-only access to this organisation.');
     dispatch(action);
     // Firestore sync happens automatically via the state-change useEffect above
   }

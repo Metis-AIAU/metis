@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, AlertCircle, Users, User, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Users, User, UserPlus, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 function friendlyError(err) {
@@ -127,6 +127,7 @@ export default function Login() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [accountType, setAccountType] = useState('individual');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -138,6 +139,7 @@ export default function Login() {
     setPassword('');
     setConfirmPassword('');
     setAccountType('individual');
+    setInviteCode('');
   }
 
   async function handleSubmit(e) {
@@ -150,8 +152,12 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       if (isRegister) {
+        if (accountType === 'join-team') {
+          if (!inviteCode.trim()) { setError('Paste your invite code to join a team.'); setIsSubmitting(false); return; }
+          sessionStorage.setItem('pending_invite', inviteCode.trim());
+        }
         await register(email.trim(), password, displayName.trim(), accountType);
-        navigate(accountType === 'team' ? '/team' : '/');
+        navigate('/');
       } else {
         await login(email.trim(), password);
         navigate('/');
@@ -354,10 +360,11 @@ export default function Login() {
                   style={{ overflow: 'hidden' }}
                 >
                   <label style={labelStyle}>Account Type</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {[
-                      { val: 'individual', label: 'Individual', sub: 'Personal workspace', Icon: User, color: '#22d3ee' },
-                      { val: 'team', label: 'Team', sub: 'Collaborate & share', Icon: Users, color: '#a78bfa' },
+                      { val: 'individual', label: 'Individual', sub: 'Personal workspace', Icon: User,     color: '#22d3ee' },
+                      { val: 'team',       label: 'Create Team', sub: 'New shared workspace', Icon: Users,    color: '#a78bfa' },
+                      { val: 'join-team',  label: 'Join Team',   sub: 'Use invite code',    Icon: UserPlus, color: '#34d399' },
                     ].map(({ val, label, sub, Icon, color }) => (
                       <button key={val} type="button" onClick={() => setAccountType(val)}
                         className="flex flex-col items-start p-3 rounded-xl transition-all text-left"
@@ -373,6 +380,27 @@ export default function Login() {
                       </button>
                     ))}
                   </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Invite code — join-team only */}
+            <AnimatePresence>
+              {isRegister && accountType === 'join-team' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <label style={labelStyle}>Invite Code</label>
+                  <input
+                    type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
+                    placeholder="Paste invite code from team admin"
+                    style={inputStyle}
+                    onFocus={e => Object.assign(e.target.style, focusStyle)}
+                    onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.boxShadow = 'none'; }}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

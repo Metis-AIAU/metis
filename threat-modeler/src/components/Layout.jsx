@@ -26,10 +26,11 @@ import {
   WifiOff,
   Sparkles,
   Users,
+  Eye,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
-import { useTeam } from '../context/TeamContext';
+import { useOrg } from '../context/OrgContext';
 
 const navigation = [
   { name: 'Dashboard',         href: '/',         icon: LayoutDashboard },
@@ -41,7 +42,7 @@ const navigation = [
   { name: 'Controls',          href: '/controls',  icon: Shield },
   { name: 'Risk Matrix',       href: '/risk-matrix', icon: BarChart3 },
   { name: 'Data Flows',        href: '/data-flows',  icon: Network },
-  { name: 'Team',              href: '/team',      icon: Users },
+  { name: 'Organisation',      href: '/org',       icon: Users },
   { name: 'Settings',          href: '/settings',  icon: Settings },
 ];
 
@@ -82,7 +83,7 @@ export default function Layout({ children }) {
   const location = useLocation();
   const { state, syncError, syncStatus } = useThreatContext();
   const { user, logout, isOffline } = useAuth();
-  const { team } = useTeam();
+  const { orgRole, canWrite, currentOrg } = useOrg();
 
   const isActive = (href) => {
     if (href === '/') return location.pathname === '/';
@@ -241,14 +242,12 @@ export default function Layout({ children }) {
                   style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
                   {user?.username}
                 </p>
-                {team ? (
+                {currentOrg ? (
                   <p className="text-[10px] mt-0.5 truncate font-medium" style={{ color: '#34d399', fontFamily: 'var(--font-mono)' }}>
-                    {team.name}
+                    {currentOrg.name}
                   </p>
-                ) : user?.accountType === 'team' ? (
-                  <p className="text-[10px] mt-0.5 text-slate-500" style={{ fontFamily: 'var(--font-mono)' }}>No team</p>
                 ) : (
-                  <p className="text-[10px] mt-0.5 text-slate-500" style={{ fontFamily: 'var(--font-mono)' }}>Individual</p>
+                  <p className="text-[10px] mt-0.5 text-slate-500" style={{ fontFamily: 'var(--font-mono)' }}>No organisation</p>
                 )}
                 {isOffline && (
                   <div className="flex items-center gap-1 mt-0.5">
@@ -317,6 +316,15 @@ export default function Layout({ children }) {
               <span className="font-semibold text-red-200">Firestore sync failed — data is saved locally only. </span>
               <span className="font-mono text-xs opacity-80">{syncError}</span>
             </div>
+          </div>
+        )}
+        {!canWrite && orgRole && (
+          <div className="flex items-center gap-2.5 px-5 py-2.5 text-sm"
+            style={{ background: 'rgba(234,179,8,0.08)', borderBottom: '1px solid rgba(234,179,8,0.2)', color: '#ca8a04' }}>
+            <Eye className="w-4 h-4 flex-shrink-0" />
+            <span>
+              You have <strong>read-only</strong> access to <strong>{currentOrg?.name}</strong>. Contact your organisation admin to request write access.
+            </span>
           </div>
         )}
         {children}

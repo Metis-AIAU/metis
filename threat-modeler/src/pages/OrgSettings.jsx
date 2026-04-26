@@ -7,6 +7,11 @@ import { useAuth } from '../context/AuthContext';
 
 const ROLE_OPTIONS = ['admin', 'member', 'viewer'];
 
+const SECTORS = [
+  'Energy', 'Water', 'Transport', 'Health', 'Communications',
+  'Banking & Finance', 'Defence', 'Education', 'Government', 'Other',
+];
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function MemberRow({ member, currentUserId, isAdmin, orgId }) {
@@ -61,9 +66,10 @@ function MemberRow({ member, currentUserId, isAdmin, orgId }) {
   );
 }
 
-function InviteForm({ onInvite }) {
+function InviteForm({ onInvite, orgId }) {
   const [email, setEmail] = useState('');
   const [role, setRole]   = useState('member');
+  const [inviteCode, setInviteCode] = useState('');
   const [status, setStatus] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -72,9 +78,12 @@ function InviteForm({ onInvite }) {
     if (!email.trim()) return;
     setIsLoading(true);
     setStatus('');
+    setInviteCode('');
     try {
-      await onInvite(email.trim().toLowerCase(), role);
-      setStatus('Invite created. Share the invite link with the user.');
+      const inviteId = await onInvite(email.trim().toLowerCase(), role);
+      const code = `${orgId}:${inviteId}`;
+      setInviteCode(code);
+      setStatus('Invite created. Share this code with the user:');
       setEmail('');
     } catch (err) {
       setStatus(`Error: ${err.message}`);
@@ -115,6 +124,20 @@ function InviteForm({ onInvite }) {
           {status}
         </p>
       )}
+      {inviteCode && (
+        <div className="mt-1 flex items-center gap-2">
+          <code className="flex-1 text-xs font-mono bg-gray-100 text-gray-800 px-3 py-2 rounded-lg break-all select-all">
+            {inviteCode}
+          </code>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(inviteCode)}
+            className="text-xs text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap"
+          >
+            Copy
+          </button>
+        </div>
+      )}
     </form>
   );
 }
@@ -123,12 +146,40 @@ function InviteForm({ onInvite }) {
 
 export default function OrgSettings() {
   const { user } = useAuth();
-  const { currentOrg, orgs, members, orgRole, canAdmin, canWrite, switchOrg, createOrg, inviteMember } = useOrg();
+  const { currentOrg, orgs, members, orgRole, canAdmin, canWrite, switchOrg, createOrg, updateOrg, inviteMember } = useOrg();
 
   const [newOrgName, setNewOrgName] = useState('');
-  const [creatingOrg, setCreatingOrg]   = useState(false);
-  const [showNewOrg, setShowNewOrg]     = useState(false);
-  const [createError, setCreateError]   = useState('');
+  const [creatingOrg, setCreatingOrg] = useState(false);
+  const [showNewOrg, setShowNewOrg]   = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const [editing, setEditing]     = useState(false);
+  const [editName, setEditName]   = useState('');
+  const [editSector, setEditSector] = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  function startEdit() {
+    setEditName(currentOrg.name);
+    setEditSector(currentOrg.sector || '');
+    setSaveError('');
+    setEditing(true);
+  }
+
+  async function handleSaveOrg(e) {
+    e.preventDefault();
+    if (!editName.trim()) { setSaveError('Name is required'); return; }
+    setSaving(true);
+    setSaveError('');
+    try {
+      await updateOrg({ name: editName.trim(), sector: editSector });
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!currentOrg) return null;
 
@@ -149,7 +200,7 @@ export default function OrgSettings() {
   }
 
   const plan = ORG_PLANS[currentOrg.plan] || ORG_PLANS.free;
-  const activeMembers = members.filter(m => m.get?.('status', 'active') !== 'removed');
+  const activeMembers = members.filter(m => m.status !== 'removed');
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4 space-y-6">
@@ -182,42 +233,99 @@ export default function OrgSettings() {
         </motion.div>
       )}
 
-      {/* Current org info */}
+      {/* Current org info + edit */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">{currentOrg.name}</h2>
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-              currentOrg.plan === 'enterprise' ? 'bg-purple-100 text-purple-700' :
-              currentOrg.plan === 'pro'        ? 'bg-blue-100 text-blue-700'     :
-                                                  'bg-gray-100 text-gray-600'
-            }`}>
-              {plan.label}
-            </span>
-            <span className="text-xs text-gray-400 capitalize px-2 py-1 bg-gray-50 rounded-full">
-              {orgRole}
-            </span>
-          </div>
-        </div>
+        {editing ? (
+          <form onSubmit={handleSaveOrg} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Organisation name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sector</label>
+              <select
+                value={editSector}
+                onChange={e => setEditSector(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">— None —</option>
+                {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {saveError && (
+              <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-900 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-900">{currentOrg.name}</h2>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                  currentOrg.plan === 'enterprise' ? 'bg-purple-100 text-purple-700' :
+                  currentOrg.plan === 'pro'        ? 'bg-blue-100 text-blue-700'     :
+                                                      'bg-gray-100 text-gray-600'
+                }`}>
+                  {plan.label}
+                </span>
+                <span className="text-xs text-gray-400 capitalize px-2 py-1 bg-gray-50 rounded-full">
+                  {orgRole}
+                </span>
+                {canAdmin && (
+                  <button
+                    onClick={startEdit}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            </div>
 
-        <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg text-center">
-          <div>
-            <p className="text-2xl font-bold text-gray-900">{activeMembers.length}</p>
-            <p className="text-xs text-gray-500 mt-1">
-              Members{plan.maxMembers ? ` / ${plan.maxMembers}` : ''}
-            </p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900 capitalize">{currentOrg.sector || '—'}</p>
-            <p className="text-xs text-gray-500 mt-1">Sector</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900">
-              {plan.aiCalls != null ? plan.aiCalls : '∞'}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">AI calls / mo</p>
-          </div>
-        </div>
+            <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg text-center">
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{activeMembers.length}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Members{plan.maxMembers ? ` / ${plan.maxMembers}` : ''}
+                </p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900 capitalize">{currentOrg.sector || '—'}</p>
+                <p className="text-xs text-gray-500 mt-1">Sector</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {plan.aiCalls != null ? plan.aiCalls : '∞'}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">AI calls / mo</p>
+              </div>
+            </div>
+          </>
+        )}
       </motion.div>
 
       {/* Members */}
@@ -245,7 +353,7 @@ export default function OrgSettings() {
         {canAdmin && (
           <div className="mt-4 pt-4 border-t border-gray-100">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Invite member</h3>
-            <InviteForm onInvite={inviteMember} />
+            <InviteForm onInvite={inviteMember} orgId={currentOrg.id} />
           </div>
         )}
       </motion.div>

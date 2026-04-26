@@ -2,12 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThreatProvider } from './context/ThreatContext';
 import { ComplianceProvider } from './context/ComplianceContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { TeamProvider } from './context/TeamContext';
 import { OrgProvider, useOrg } from './context/OrgContext';
 import InteractivityMonitor from './components/InteractivityMonitor';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import OrgOnboarding from './pages/OrgOnboarding';
+import EmailVerification from './pages/EmailVerification';
 import OrgSettings from './pages/OrgSettings';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
@@ -18,7 +18,6 @@ import Controls from './pages/Controls';
 import RiskMatrix from './pages/RiskMatrix';
 import DataFlows from './pages/DataFlows';
 import Settings from './pages/Settings';
-import TeamPage from './pages/Team';
 import ExecutiveView from './pages/ExecutiveView';
 import DiagramPage from './pages/Diagram';
 import AdvancedAnalysis from './pages/AdvancedAnalysis';
@@ -30,6 +29,13 @@ import EssentialEightPage from './pages/compliance/EssentialEightPage';
 import GapAnalysis from './pages/compliance/GapAnalysis';
 import ComplianceReport from './pages/compliance/ComplianceReport';
 import './index.css';
+
+/** Shows email verification screen if the user hasn't verified their email yet. */
+function EmailVerificationGate({ children }) {
+  const { user } = useAuth();
+  if (user && !user.emailVerified) return <EmailVerification />;
+  return children;
+}
 
 /** Redirects to /login if not authenticated. */
 function ProtectedRoute({ children }) {
@@ -80,6 +86,7 @@ function AppRoutes() {
         path="/*"
         element={
           <ProtectedRoute>
+            <EmailVerificationGate>
             <OrgGate>
               <Layout>
                 <Routes>
@@ -96,7 +103,7 @@ function AppRoutes() {
                   <Route path="/risk-matrix" element={<RiskMatrix />} />
                   <Route path="/data-flows" element={<DataFlows />} />
                   <Route path="/settings" element={<Settings />} />
-                  <Route path="/team" element={<TeamPage />} />
+                  <Route path="/team" element={<Navigate to="/org" replace />} />
                   <Route path="/org" element={<OrgSettings />} />
                   {/* Compliance Tracker */}
                   <Route path="/compliance" element={<ComplianceDashboard />} />
@@ -109,6 +116,7 @@ function AppRoutes() {
                 </Routes>
               </Layout>
             </OrgGate>
+            </EmailVerificationGate>
           </ProtectedRoute>
         }
       />
@@ -120,7 +128,6 @@ function App() {
   return (
     <AuthProvider>
       <OrgProvider>
-        <TeamProvider>
           <ThreatProvider>
             <ComplianceProvider>
               <BrowserRouter>
@@ -129,7 +136,6 @@ function App() {
               </BrowserRouter>
             </ComplianceProvider>
           </ThreatProvider>
-        </TeamProvider>
       </OrgProvider>
     </AuthProvider>
   );

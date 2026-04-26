@@ -20,6 +20,12 @@ import {
   Lock,
   ExternalLink,
   Save,
+  ShieldCheck,
+  Users,
+  ArrowDown,
+  ArrowRight,
+  Zap,
+  XCircle,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +34,7 @@ import { useOrg } from '../context/OrgContext';
 export default function Settings() {
   const { state, resetToSampleData } = useThreatContext();
   const { user, isAuthenticated, updateDisplayName, updateUserPassword } = useAuth();
-  const { currentOrg } = useOrg();
+  const { currentOrg, canAdmin, orgRole } = useOrg();
   const [exportStatus, setExportStatus] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
   const [showSecrets, setShowSecrets] = useState(false);
@@ -532,16 +538,18 @@ export default function Settings() {
 
             <div className="mt-6 pt-4 border-t border-gray-100">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 text-sm text-gray-500">
-                  <span>
-                    Firestore Path: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
-                      users/{user?.id ? user.id.slice(0, 8) + '...' : '—'}/data/threatData
-                    </code>
-                  </span>
+                <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
                   {currentOrg && (
                     <span>
-                      Org Doc: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
-                        orgs/{currentOrg.id.slice(0, 8)}...
+                      Org data: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                        orgs/{currentOrg.id.slice(0, 8)}…/data/threatData
+                      </code>
+                    </span>
+                  )}
+                  {currentOrg && (
+                    <span>
+                      Compliance: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">
+                        orgs/{currentOrg.id.slice(0, 8)}…/data/complianceState
                       </code>
                     </span>
                   )}
@@ -550,6 +558,254 @@ export default function Settings() {
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                   Connected
                 </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Security Architecture — org admin / owner only */}
+        {(canAdmin || isAdmin) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.38 }}
+            className="card lg:col-span-2"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <h2 className="font-semibold text-gray-900">Security Architecture</h2>
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Admin only
+                </span>
+              </div>
+              <span className="text-xs text-gray-400 italic">As-built security posture</span>
+            </div>
+
+            {/* ── Architecture flow diagram ── */}
+            <div className="space-y-2 mb-8">
+
+              {/* Layer 1 — Browser */}
+              <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold shrink-0">1</span>
+                  <span className="font-semibold text-blue-800 text-sm">Browser / Client</span>
+                  <span className="ml-auto text-xs text-blue-500 font-mono">React SPA (Vite)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[
+                    {
+                      icon: Shield,
+                      title: 'Firebase Auth',
+                      color: 'blue',
+                      lines: ['ID Token (short-lived JWT)', 'Email verification gate', 'App-admin bypass flag'],
+                    },
+                    {
+                      icon: Users,
+                      title: 'Org RBAC (OrgContext)',
+                      color: 'blue',
+                      lines: ['owner / admin / member / viewer', 'Viewer → read-only banner', 'X-Org-Id on every /api/* call'],
+                    },
+                    {
+                      icon: Database,
+                      title: 'Firestore Client SDK',
+                      color: 'blue',
+                      lines: ['onSnapshot real-time sync', 'orgs/{orgId}/data/* path', 'Rules enforced backend-side'],
+                    },
+                  ].map(({ icon: Icon, title, lines }) => (
+                    <div key={title} className="bg-white rounded-lg p-3 border border-blue-100">
+                      <div className="font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5 text-xs">
+                        <Icon className="w-3.5 h-3.5 text-blue-500" /> {title}
+                      </div>
+                      <ul className="space-y-0.5">
+                        {lines.map(l => <li key={l} className="text-xs text-gray-500">· {l}</li>)}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Connector */}
+              <div className="flex flex-col items-center gap-0.5 py-1 text-gray-400">
+                <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">
+                  Authorization: Bearer &lt;token&gt; · X-Org-Id: &lt;orgId&gt; · HTTPS
+                </span>
+                <ArrowDown className="w-5 h-5 mt-0.5" />
+              </div>
+
+              {/* Layer 2 — Express */}
+              <div className="rounded-xl border-2 border-slate-300 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-5 h-5 rounded-full bg-slate-700 text-white text-[10px] flex items-center justify-center font-bold shrink-0">2</span>
+                  <span className="font-semibold text-slate-800 text-sm">API Gateway · Cloud Run / Express</span>
+                  <span className="ml-auto text-xs text-slate-400 font-mono">australia-southeast1</span>
+                </div>
+
+                {/* Middleware chain */}
+                <div className="flex items-start gap-2 mb-4 flex-wrap">
+                  {[
+                    { fn: 'verifyFirebaseToken', note: 'validates ID token via Admin SDK' },
+                    { fn: 'requireOrgMember',    note: 'checks Firestore org membership' },
+                    { fn: 'route handler',       note: 'analyze / advanced / compliance' },
+                  ].map((step, i) => (
+                    <div key={step.fn} className="flex items-center gap-2">
+                      {i > 0 && <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                      <div className="flex items-start gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-px" />
+                        <div>
+                          <div className="text-xs font-semibold text-slate-800 font-mono leading-tight">{step.fn}</div>
+                          <div className="text-[11px] text-slate-500 leading-tight">{step.note}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Route table */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { route: '/api/analyze',      access: '🔒 auth + org' },
+                    { route: '/api/advanced/*',   access: '🔒 auth + org' },
+                    { route: '/api/compliance/*', access: '🔒 auth + org' },
+                    { route: '/api/health',       access: '🌐 public probe' },
+                  ].map(({ route, access }) => (
+                    <div key={route} className="bg-white rounded-lg px-2.5 py-2 border border-slate-200">
+                      <div className="text-xs font-mono text-slate-700 truncate">{route}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">{access}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Connector */}
+              <div className="flex flex-col items-center gap-0.5 py-1 text-gray-400">
+                <ArrowDown className="w-5 h-5" />
+              </div>
+
+              {/* Layer 3 — Infrastructure */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border-2 border-orange-200 bg-orange-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Database className="w-4 h-4 text-orange-600" />
+                    <span className="font-semibold text-orange-800 text-sm">Cloud Firestore</span>
+                  </div>
+                  <div className="font-mono text-[11px] bg-orange-100 px-2 py-1 rounded mb-2 break-all text-orange-700">
+                    orgs/{currentOrg?.id?.slice(0, 8) || '—'}…/data/*
+                  </div>
+                  <ul className="text-xs text-orange-700 space-y-0.5">
+                    <li>· Deny-by-default catch-all</li>
+                    <li>· isOrgWriter / isOrgAdmin helpers</li>
+                    <li>· Invite email-scoped update only</li>
+                    <li>· Legacy paths locked read-only</li>
+                  </ul>
+                </div>
+
+                <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Key className="w-4 h-4 text-green-700" />
+                    <span className="font-semibold text-green-800 text-sm">Secret Manager</span>
+                  </div>
+                  <ul className="text-xs text-green-700 space-y-0.5">
+                    <li>· ANTHROPIC_API_KEY → runtime inject</li>
+                    <li>· VITE_FIREBASE_* → build-time fetch</li>
+                    <li>· Firebase Admin uses ADC (no key stored)</li>
+                    <li>· CI/CD via Workload Identity Federation</li>
+                  </ul>
+                </div>
+
+                <div className="rounded-xl border-2 border-purple-200 bg-purple-50 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-4 h-4 text-purple-600" />
+                    <span className="font-semibold text-purple-800 text-sm">Claude AI + RAG</span>
+                  </div>
+                  <ul className="text-xs text-purple-700 space-y-0.5">
+                    <li>· claude-sonnet-4-6 (analyze)</li>
+                    <li>· claude-opus-4-6 (advanced docs)</li>
+                    <li>· Vertex AI embeddings (RAG retrieval)</li>
+                    <li>· compliance_embeddings (shared read-only)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* ── RBAC matrix ── */}
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-gray-500" /> Role-Based Access Control
+              </h3>
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-3 py-2.5 text-left font-semibold text-gray-600 w-24">Role</th>
+                      {['Read data', 'Write data', 'AI routes', 'Invite members', 'Edit org', 'Delete org'].map(h => (
+                        <th key={h} className="px-2 py-2.5 text-center font-semibold text-gray-600">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {[
+                      { role: 'owner',  colorClass: 'text-purple-700', caps: [true,  true,  true,  true,  true,  true]  },
+                      { role: 'admin',  colorClass: 'text-blue-700',   caps: [true,  true,  true,  true,  true,  false] },
+                      { role: 'member', colorClass: 'text-green-700',  caps: [true,  true,  true,  false, false, false] },
+                      { role: 'viewer', colorClass: 'text-gray-600',   caps: [true,  false, false, false, false, false] },
+                    ].map(({ role, colorClass, caps }) => (
+                      <tr key={role} className="hover:bg-gray-50">
+                        <td className="px-3 py-2.5">
+                          <span className={`font-semibold capitalize ${colorClass}`}>{role}</span>
+                          {role === orgRole && (
+                            <span className="ml-2 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">you</span>
+                          )}
+                        </td>
+                        {caps.map((allowed, i) => (
+                          <td key={i} className="px-2 py-2.5 text-center">
+                            {allowed
+                              ? <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto" />
+                              : <XCircle className="w-4 h-4 text-gray-200 mx-auto" />
+                            }
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] text-gray-400 px-3 py-2 bg-gray-50 border-t border-gray-100">
+                  ⚠ Viewer passes server-side requireOrgMember — add requireOrgWriter middleware to fully block AI routes for viewers.
+                </p>
+              </div>
+            </div>
+
+            {/* ── Security posture checklist ── */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-gray-500" /> Security Posture
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { ok: true,  text: 'Firebase ID token verified on every API route' },
+                  { ok: true,  text: 'Org membership verified server-side (requireOrgMember)' },
+                  { ok: true,  text: 'Firestore deny-by-default rules deployed to production' },
+                  { ok: true,  text: 'ANTHROPIC_API_KEY stored in Secret Manager (not in code)' },
+                  { ok: true,  text: 'CI/CD via Workload Identity Federation — no long-lived GCP key' },
+                  { ok: true,  text: 'CORS defaults to same-origin deny in production (NODE_ENV=production)' },
+                  { ok: true,  text: 'Email verification gate blocks unverified accounts' },
+                  { ok: true,  text: 'Firebase Admin uses Application Default Credentials on Cloud Run' },
+                  { ok: false, text: 'Rate limiting on AI routes — not yet implemented (recommended)' },
+                  { ok: false, text: 'Viewer role blocked at route level — currently passes requireOrgMember' },
+                ].map(({ ok, text }) => (
+                  <div
+                    key={text}
+                    className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs ${
+                      ok ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
+                    }`}
+                  >
+                    {ok
+                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                      : <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                    }
+                    {text}
+                  </div>
+                ))}
               </div>
             </div>
           </motion.div>

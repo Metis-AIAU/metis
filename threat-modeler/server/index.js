@@ -4,17 +4,20 @@ const cors    = require('cors');
 const path    = require('path');
 const fs      = require('fs');
 
-const { loadSecrets }        = require('./secrets');
-const { verifyFirebaseToken } = require('./middleware/firebaseAuth');
+const { loadSecrets }                                        = require('./secrets');
+const { verifyFirebaseToken, requireOrgMember } = require('./middleware/firebaseAuth');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middleware ────────────────────────────────────────────────────────────
+const isProd = process.env.NODE_ENV === 'production';
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || '*',
+  origin: process.env.ALLOWED_ORIGIN
+    ? process.env.ALLOWED_ORIGIN.split(',').map(s => s.trim())
+    : (isProd ? false : '*'),          // prod with no ALLOWED_ORIGIN set → deny all cross-origin
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id'],
 }));
 
 app.use(express.json({ limit: '2mb' }));
@@ -43,10 +46,10 @@ if (fs.existsSync(distPath)) {
   const advancedRoutes   = require('./routes/advanced');
   const complianceRoutes = require('./routes/compliance');
 
-  app.use('/api/analyze',    verifyFirebaseToken, analyzeRoutes);
-  app.use('/api/confluence', verifyFirebaseToken, confluenceRoutes);
-  app.use('/api/advanced',   verifyFirebaseToken, advancedRoutes);
-  app.use('/api/compliance', verifyFirebaseToken, complianceRoutes);
+  app.use('/api/analyze',    verifyFirebaseToken, requireOrgMember, analyzeRoutes);
+  app.use('/api/confluence', verifyFirebaseToken, requireOrgMember, confluenceRoutes);
+  app.use('/api/advanced',   verifyFirebaseToken, requireOrgMember, advancedRoutes);
+  app.use('/api/compliance', verifyFirebaseToken, requireOrgMember, complianceRoutes);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 

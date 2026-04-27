@@ -61,6 +61,29 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member "serviceAccount:$SA" --role roles/secretmanager.secretAccessor
 ```
 
+### 4b. Grant the Cloud Run runtime service account Firestore access
+
+The *runtime* identity is the **default compute service account**, not the deployer SA above.
+Firebase Admin (org membership checks, RAG) uses ADC at runtime and needs Firestore read/write.
+
+```bash
+# Cloud Run runtime identity
+RUNTIME_SA="499037545252-compute@developer.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding metis-ai-1551 \
+  --member "serviceAccount:$RUNTIME_SA" \
+  --role roles/datastore.user
+
+# Also grant Firebase Admin SDK access (token verification, custom claims)
+gcloud projects add-iam-policy-binding metis-ai-1551 \
+  --member "serviceAccount:$RUNTIME_SA" \
+  --role roles/firebase.sdkAdminServiceAgent
+```
+
+> If you already deployed and are seeing "Failed to verify org membership" errors,
+> run the two `add-iam-policy-binding` commands above — no redeploy needed,
+> IAM changes take effect within ~60 seconds.
+
 ### 5. Set up Workload Identity Federation (no long-lived keys)
 ```bash
 # Create the pool

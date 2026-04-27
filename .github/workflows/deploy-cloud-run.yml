@@ -102,7 +102,7 @@ jobs:
             --min-instances 0 \
             --max-instances 10 \
             --set-secrets "ANTHROPIC_API_KEY=APIkeyclaude:latest" \
-            --set-env-vars "NODE_ENV=production" \
+            --set-env-vars "NODE_ENV=production,FIREBASE_PROJECT_ID=metis-ai-1551" \
             --quiet
 
       # ── Deploy Firestore security rules ───────────────────────────────────

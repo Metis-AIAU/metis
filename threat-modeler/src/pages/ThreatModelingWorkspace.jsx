@@ -46,14 +46,14 @@ const RISK_BG = {
   CRITICAL: '#fee2e2', HIGH: '#ffedd5', MEDIUM: '#fef3c7', LOW: '#ecfccb', MINIMAL: '#dcfce7',
 };
 
-// ─── Risk matrix cell colours ─────────────────────────────────────────────────
+// ─── Risk matrix cell colours (matches RiskMatrix.jsx page exactly) ────────────
 function cellColor(l, i) {
   const s = l * i;
-  if (s >= 20) return { bg: '#991b1b', text: '#fee2e2' };
-  if (s >= 15) return { bg: '#c2410c', text: '#ffedd5' };
-  if (s >= 10) return { bg: '#f59e0b', text: '#1f2937' };
-  if (s >= 5)  return { bg: '#84cc16', text: '#1f2937' };
-  return { bg: '#22c55e', text: '#1f2937' };
+  if (s >= 20) return { bg: '#991b1b', text: '#fee2e2', level: 'Critical' };
+  if (s >= 15) return { bg: '#c2410c', text: '#ffedd5', level: 'High' };
+  if (s >= 10) return { bg: '#f59e0b', text: '#fef3c7', level: 'Medium' };
+  if (s >= 5)  return { bg: '#84cc16', text: '#ecfccb', level: 'Low' };
+  return { bg: '#22c55e', text: '#dcfce7', level: 'Minimal' };
 }
 
 // ─── Form section wrapper ─────────────────────────────────────────────────────
@@ -204,11 +204,15 @@ function SystemInfoForm({ formData, onChange, project }) {
   );
 }
 
-// ─── Mini risk matrix for the Risk Matrix tab ─────────────────────────────────
+// ─── Risk matrix heatmap — matches RiskMatrix.jsx page exactly ────────────────
 function WorkspaceRiskMatrix({ threats, showResidual }) {
   const [selectedCell, setSelectedCell] = useState(null);
+  const [hoveredCell, setHoveredCell]   = useState(null);
 
-  const keyFn = (t) => showResidual
+  const LIKELIHOOD_LABELS = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
+  const IMPACT_LABELS     = ['Minimal', 'Low', 'Moderate', 'High', 'Critical'];
+
+  const keyFn = (t) => showResidual && t.riskScore > 0
     ? `${Math.min(5, Math.max(1, Math.round(t.likelihood * Math.sqrt(t.residualRiskScore / t.riskScore))))}-${Math.min(5, Math.max(1, Math.round(t.impact * Math.sqrt(t.residualRiskScore / t.riskScore))))}`
     : `${t.likelihood}-${t.impact}`;
 
@@ -216,72 +220,123 @@ function WorkspaceRiskMatrix({ threats, showResidual }) {
   for (let l = 1; l <= 5; l++) for (let i = 1; i <= 5; i++) matrix[`${l}-${i}`] = [];
   threats.forEach(t => { const k = keyFn(t); if (matrix[k]) matrix[k].push(t); });
 
-  const LIKELIHOOD_LABELS = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
-  const IMPACT_LABELS     = ['Minimal', 'Low', 'Moderate', 'High', 'Critical'];
-
   const selectedThreats = selectedCell ? matrix[selectedCell] || [] : [];
 
   return (
-    <div className="flex gap-6 flex-wrap">
-      {/* Matrix */}
-      <div className="flex-shrink-0">
-        <div className="flex">
-          {/* Y-axis label */}
-          <div className="flex items-center justify-center w-8">
-            <span className="text-xs text-gray-400 -rotate-90 whitespace-nowrap">Impact →</span>
+    <div className="space-y-6">
+      <div className="relative">
+        {/* Y-axis label */}
+        <div className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-sm font-medium text-gray-500 whitespace-nowrap">
+          Impact
+        </div>
+
+        <div className="ml-16">
+          {/* Column headers */}
+          <div className="flex">
+            <div className="w-20" />
+            {LIKELIHOOD_LABELS.map((label, i) => (
+              <div key={i} className="flex-1 text-center text-xs text-gray-500 pb-2">{label}</div>
+            ))}
           </div>
-          <div>
-            {/* Rows top-to-bottom: impact 5 → 1 */}
-            {[5, 4, 3, 2, 1].map(impact => (
-              <div key={impact} className="flex items-center">
-                <div className="w-14 pr-2 text-right text-xs text-gray-500 flex-shrink-0">{IMPACT_LABELS[impact-1]}</div>
+
+          {/* Matrix rows */}
+          {[5, 4, 3, 2, 1].map(impact => (
+            <div key={impact} className="flex items-center">
+              <div className="w-20 text-xs text-gray-500 pr-3 text-right">{IMPACT_LABELS[impact - 1]}</div>
+              <div className="flex-1 flex gap-2">
                 {[1, 2, 3, 4, 5].map(likelihood => {
-                  const key = `${likelihood}-${impact}`;
-                  const c   = cellColor(likelihood, impact);
-                  const cnt = matrix[key]?.length || 0;
-                  const sel = selectedCell === key;
+                  const cellKey = `${likelihood}-${impact}`;
+                  const cellThreats = matrix[cellKey] || [];
+                  const c = cellColor(likelihood, impact);
+                  const isSelected = selectedCell === cellKey;
+                  const isHovered  = hoveredCell  === cellKey;
+
                   return (
-                    <div key={key}
-                      onClick={() => setSelectedCell(sel ? null : key)}
-                      className={`w-16 h-12 border-2 flex items-center justify-center cursor-pointer transition-all rounded-md m-0.5 ${
-                        sel ? 'ring-2 ring-offset-1 ring-blue-500 scale-105' : 'hover:scale-105'
+                    <motion.div
+                      key={cellKey}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setSelectedCell(isSelected ? null : cellKey)}
+                      onMouseEnter={() => setHoveredCell(cellKey)}
+                      onMouseLeave={() => setHoveredCell(null)}
+                      className={`flex-1 aspect-square rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all relative ${
+                        isSelected ? 'ring-4 ring-blue-400 ring-offset-2' : ''
                       }`}
-                      style={{ background: c.bg, borderColor: cnt > 0 ? c.bg : '#e5e7eb' }}
-                      title={`L=${likelihood} I=${impact} Score=${likelihood*impact}`}
+                      style={{ backgroundColor: c.bg }}
                     >
-                      {cnt > 0 ? (
-                        <span className="text-sm font-bold" style={{ color: c.text }}>{cnt}</span>
-                      ) : (
-                        <span className="text-xs opacity-30" style={{ color: c.text }}>—</span>
+                      <span className="text-2xl font-bold text-white">
+                        {cellThreats.length || ''}
+                      </span>
+                      {cellThreats.length > 0 && (
+                        <span className="text-xs text-white/80">
+                          threat{cellThreats.length !== 1 ? 's' : ''}
+                        </span>
                       )}
-                    </div>
+
+                      {/* Tooltip */}
+                      <AnimatePresence>
+                        {isHovered && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute bottom-full mb-2 bg-gray-900 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap z-10 shadow-lg pointer-events-none"
+                          >
+                            <div className="font-medium">{c.level} Risk</div>
+                            <div className="text-gray-300">Score: {likelihood * impact} | L:{likelihood} × I:{impact}</div>
+                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full">
+                              <div className="border-8 border-transparent border-t-gray-900" />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
                   );
                 })}
               </div>
-            ))}
-            {/* X-axis labels */}
-            <div className="flex items-center mt-1">
-              <div className="w-14" />
-              {LIKELIHOOD_LABELS.map(l => (
-                <div key={l} className="w-16 mx-0.5 text-center text-xs text-gray-400 leading-tight">{l}</div>
-              ))}
             </div>
-            <div className="ml-14 text-center text-xs text-gray-400 mt-1">Likelihood →</div>
-          </div>
+          ))}
+
+          {/* X-axis label */}
+          <div className="text-center text-sm font-medium text-gray-500 mt-4">Likelihood</div>
         </div>
       </div>
 
-      {/* Selected cell threats */}
-      <div className="flex-1 min-w-[200px]">
-        {selectedCell ? (
-          selectedThreats.length > 0 ? (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">
-                {selectedThreats.length} threat{selectedThreats.length > 1 ? 's' : ''} at L={selectedCell.split('-')[0]}, I={selectedCell.split('-')[1]}
-              </h4>
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-6 pt-4 border-t border-gray-100">
+        {[
+          { label: 'Critical', color: '#991b1b' },
+          { label: 'High',     color: '#c2410c' },
+          { label: 'Medium',   color: '#f59e0b' },
+          { label: 'Low',      color: '#84cc16' },
+          { label: 'Minimal',  color: '#22c55e' },
+        ].map(item => (
+          <div key={item.label} className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded" style={{ backgroundColor: item.color }} />
+            <span className="text-sm text-gray-600">{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Selected cell details */}
+      {selectedCell && (() => {
+        const [l, i] = selectedCell.split('-').map(Number);
+        const c = cellColor(l, i);
+        return (
+          <div className="border border-gray-100 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: c.bg }}>
+                <span className="text-white font-bold text-sm">{l * i}</span>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900">{c.level} Risk</p>
+                <p className="text-xs text-gray-500">L:{l} ({LIKELIHOOD_LABELS[l-1]}) × I:{i} ({IMPACT_LABELS[i-1]})</p>
+              </div>
+            </div>
+            {selectedThreats.length > 0 ? (
               <div className="space-y-2">
                 {selectedThreats.map(t => (
-                  <div key={t.id} className="p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                  <div key={t.id} className="p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                         style={{ background: STRIDE_CATEGORIES[t.strideCategory]?.color }}>
@@ -299,17 +354,12 @@ function WorkspaceRiskMatrix({ threats, showResidual }) {
                   </div>
                 ))}
               </div>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-400 italic">No threats in this cell</div>
-          )
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center p-4">
-            <BarChart2 className="w-8 h-8 text-gray-200 mb-2" />
-            <p className="text-sm text-gray-400">Click a cell to see threats</p>
+            ) : (
+              <p className="text-sm text-gray-400 text-center py-3">No threats in this cell</p>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
     </div>
   );
 }

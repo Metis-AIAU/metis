@@ -13,6 +13,21 @@ async function verifyFirebaseToken(req, res, next) {
   }
 
   const idToken = authHeader.slice(7);
+
+  // Dev bypass: decode JWT payload without verifying signature (no Firebase Admin needed).
+  // Set DEV_SKIP_AUTH=true in server/.env — ignored in production.
+  if (process.env.DEV_SKIP_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
+    try {
+      const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url').toString());
+      req.user  = { uid: payload.user_id || payload.sub, email: payload.email || '' };
+      req.orgId = req.headers['x-org-id'] || null;
+      console.warn(`[firebaseAuth] DEV_SKIP_AUTH=true — token not verified, uid=${req.user.uid}`);
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'Unauthorized — could not decode token' });
+    }
+  }
+
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
     req.user  = { uid: decoded.uid, email: decoded.email };
@@ -23,7 +38,7 @@ async function verifyFirebaseToken(req, res, next) {
       err.message?.includes('service account') ||
       err.code === 'app/invalid-credential';
     if (isCredentialError) {
-      console.error('[firebaseAuth] Firebase Admin credentials not configured. Set FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY in server/.env for local dev.');
+      console.error('[firebaseAuth] Firebase Admin credentials not configured. Set FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY in server/.env for local dev, or set DEV_SKIP_AUTH=true.');
       return res.status(500).json({ error: 'Server misconfigured — Firebase Admin credentials missing. See server logs.' });
     }
     return res.status(401).json({ error: 'Unauthorized — invalid or expired token' });

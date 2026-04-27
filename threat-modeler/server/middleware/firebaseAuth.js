@@ -43,6 +43,14 @@ async function requireOrgMember(req, res, next) {
     return res.status(400).json({ error: 'X-Org-Id header required' });
   }
 
+  // Dev escape hatch: set DEV_SKIP_ORG_CHECK=true in server/.env to bypass
+  // Firestore membership check when Firebase Admin credentials aren't configured locally.
+  if (process.env.DEV_SKIP_ORG_CHECK === 'true' && process.env.NODE_ENV !== 'production') {
+    console.warn('[firebaseAuth] DEV_SKIP_ORG_CHECK=true — skipping org membership verification (dev only)');
+    req.orgRole = 'owner';
+    return next();
+  }
+
   try {
     const db = admin.firestore();
     const memberSnap = await db
@@ -51,13 +59,35 @@ async function requireOrgMember(req, res, next) {
       .get();
 
     if (!memberSnap.exists || memberSnap.data()?.status === 'removed') {
+      console.warn(`[firebaseAuth] uid=${uid} not found in org=${orgId}`);
       return res.status(403).json({ error: 'Forbidden — not a member of this organisation' });
     }
 
     req.orgRole = memberSnap.data().role;
     next();
   } catch (err) {
-    console.error('[firebaseAuth] org membership check failed:', err.message);
+    const isCredentialError =
+      err.message?.includes('default credentials') ||
+      err.message?.includes('service account') ||
+      err.message?.includes('Could not load') ||
+      err.message?.includes('UNAUTHENTICATED') ||
+      err.code === 'app/invalid-credential';
+
+    if (isCredentialError) {
+      console.error(
+        '[firebaseAuth] Firebase Admin credentials not configured for Firestore access.\n' +
+        '  → For local dev, add to server/.env:\n' +
+        '      FIREBASE_CLIENT_EMAIL=<service-account-email>\n' +
+        '      FIREBASE_PRIVATE_KEY=<private-key>\n' +
+        '  → OR run: gcloud auth application-default login\n' +
+        '  → OR set DEV_SKIP_ORG_CHECK=true in server/.env (dev only)'
+      );
+      return res.status(500).json({
+        error: 'Server misconfigured — Firebase Admin credentials missing for Firestore. See server logs.',
+      });
+    }
+
+    console.error('[firebaseAuth] org membership check failed:', err.message, { uid, orgId });
     return res.status(500).json({ error: 'Failed to verify org membership' });
   }
 }

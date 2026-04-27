@@ -740,6 +740,12 @@ export async function analyzeWithContext(project, formData = {}, canvasElements 
     if (serverError.includes('ANTHROPIC_API_KEY')) {
       throw new Error('API key not configured on server — set ANTHROPIC_API_KEY in server/.env and restart.');
     }
+    if (serverError.includes('not a member of this organisation') || serverError.includes('X-Org-Id')) {
+      throw new Error('Org verification failed — make sure you have selected an organisation and the server has Firebase Admin credentials configured.');
+    }
+    if (serverError.includes('Firebase Admin credentials missing')) {
+      throw new Error('Server misconfigured — Firebase Admin credentials not set up for local dev. Add DEV_SKIP_ORG_CHECK=true to server/.env and restart the server.');
+    }
     throw new Error(serverError);
   } catch (err) {
     if (err.name === 'AbortError' || err.name === 'TimeoutError') {

@@ -13,15 +13,18 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
     "@headlessui/react": "^2.2.9",
     "firebase": "^12.11.0",
     "framer-motion": "^12.29.2",
+    "langsmith": "^0.5.25",
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
     "recharts": "^3.7.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

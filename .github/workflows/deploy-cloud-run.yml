@@ -101,6 +101,7 @@ jobs:
             --cpu 1 \
             --min-instances 0 \
             --max-instances 10 \
+            --timeout 300 \
             --set-secrets "ANTHROPIC_API_KEY=APIkeyclaude:latest" \
             --set-env-vars "NODE_ENV=production,FIREBASE_PROJECT_ID=metis-ai-1551" \
             --quiet

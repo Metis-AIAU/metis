@@ -6,7 +6,7 @@ import {
   FileText, LayoutTemplate, Brain, BarChart2, Shield, AlertTriangle,
   ChevronRight, ChevronLeft, CheckCircle2, Plus, X, Loader2, Sparkles,
   ArrowRight, GitBranch, Eye, TrendingDown, Network, Database, Globe,
-  Server, Smartphone, Share2, Activity, AlertCircle,
+  Server, Smartphone, Share2, Activity, AlertCircle, Upload, File, Trash2,
 } from 'lucide-react';
 import { useThreatContext, STRIDE_CATEGORIES } from '../context/ThreatContext';
 import ThreatModelCanvas from '../components/ThreatModelCanvas';
@@ -74,10 +74,9 @@ const SIL_LEVELS = [
 const OT_STANDARDS = [
   { id: 'iec62443',      name: 'IEC 62443',       desc: 'Industrial cybersecurity standard series', color: '#dc2626' },
   { id: 'nerc-cip',      name: 'NERC CIP',         desc: 'Critical infrastructure protection (power grid)', color: '#7c3aed' },
-  { id: 'aescsf',        name: 'AESCSF',           desc: 'Australian Energy Sector Cyber Security Framework', color: '#1d4ed8' },
   { id: 'nist-sp800-82', name: 'NIST SP 800-82',   desc: 'Guide to OT/ICS security (NIST)', color: '#15803d' },
   { id: 'isa-62443',     name: 'ISA/IEC 99',       desc: 'Industrial automation & control systems security', color: '#0891b2' },
-  { id: 'soci',          name: 'SOCI Act',          desc: 'Security of Critical Infrastructure Act 2018', color: '#be123c' },
+  { id: 'iec61511',      name: 'IEC 61511',         desc: 'Safety instrumented systems for the process industry', color: '#0e7490' },
 ];
 
 // ─── IT Constants ─────────────────────────────────────────────────────────────
@@ -469,17 +468,6 @@ function OTForm({ form, setForm }) {
         </div>
       </div>
 
-      {/* Sensitive data */}
-      <div>
-        <SectionLabel>Sensitive / Operational Data Handled</SectionLabel>
-        <div className="flex flex-wrap gap-2">
-          {SENSITIVE_DATA_TYPES.map(type => (
-            <TagChip key={type} label={type} color="purple"
-              selected={(form.sensitiveData || []).includes(type)}
-              onClick={() => toggle('sensitiveData', type)} />
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -648,17 +636,110 @@ function ITForm({ form, setForm }) {
         </div>
       </div>
 
-      {/* Sensitive data */}
-      <div>
-        <SectionLabel>Sensitive Data Handled</SectionLabel>
-        <div className="flex flex-wrap gap-2">
-          {SENSITIVE_DATA_TYPES.map(type => (
-            <TagChip key={type} label={type} color="purple"
-              selected={(form.sensitiveData || []).includes(type)}
-              onClick={() => toggle('sensitiveData', type)} />
-          ))}
-        </div>
+    </div>
+  );
+}
+
+// ── Document Upload ───────────────────────────────────────────────────────────
+
+const ACCEPTED_MIME = {
+  'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/msword': 'DOC',
+};
+const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8 MB before base64
+
+function DocumentUpload({ form, setForm }) {
+  const [dragging, setDragging] = React.useState(false);
+  const inputRef = React.useRef(null);
+
+  const processFile = (file) => {
+    if (!ACCEPTED_MIME[file.type]) {
+      alert('Only PDF, DOC, and DOCX files are supported.');
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      alert('File exceeds 8 MB limit. Please use a smaller document.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target.result.split(',')[1];
+      setForm(f => ({
+        ...f,
+        documentBase64:  base64,
+        documentMimeType: file.type,
+        documentName:    file.name,
+        documentSize:    file.size,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearDoc = () => setForm(f => ({
+    ...f, documentBase64: '', documentMimeType: '', documentName: '', documentSize: 0,
+  }));
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  };
+
+  const hasDoc = !!form.documentBase64;
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <div className="h-px flex-1 bg-gray-200" />
+        <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Design Document (Optional)</span>
+        <div className="h-px flex-1 bg-gray-200" />
       </div>
+
+      {hasDoc ? (
+        <div className="flex items-center gap-4 p-4 rounded-xl border-2 border-green-300 bg-green-50">
+          <div className="w-10 h-10 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
+            <File className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-green-800 text-sm truncate">{form.documentName}</p>
+            <p className="text-xs text-green-600 mt-0.5">
+              {ACCEPTED_MIME[form.documentMimeType]} · {(form.documentSize / 1024).toFixed(0)} KB · AI will analyse this document
+            </p>
+          </div>
+          <button type="button" onClick={clearDoc}
+            className="p-2 rounded-lg hover:bg-green-200 text-green-700 transition-colors flex-shrink-0">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          className={`flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+            dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+          }`}>
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+            dragging ? 'bg-blue-100' : 'bg-gray-100'
+          }`}>
+            <Upload className={`w-6 h-6 ${dragging ? 'text-blue-500' : 'text-gray-400'}`} />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-semibold text-gray-700">Upload design or architecture document</p>
+            <p className="text-xs text-gray-400 mt-1">PDF, DOC, or DOCX · Max 8 MB · Drag & drop or click</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200">
+            <Brain className="w-3.5 h-3.5" />
+            AI extracts architecture details to enrich threat analysis
+          </div>
+        </div>
+      )}
+      <input ref={inputRef} type="file" className="hidden"
+        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onChange={e => { if (e.target.files[0]) processFile(e.target.files[0]); e.target.value = ''; }} />
     </div>
   );
 }
@@ -727,6 +808,9 @@ function Stage1({ form, setForm }) {
             className="input" placeholder="e.g., scada, iec62443, internet-facing, pci-dss" />
         </div>
       </div>
+
+      {/* ── Document upload ── */}
+      <DocumentUpload form={form} setForm={setForm} />
 
       {/* ── Project Type selector ── */}
       <div>
@@ -960,12 +1044,7 @@ function Stage3({ form, setForm }) {
         <p className="text-sm font-semibold text-gray-700 mb-1">Sensitive Data Types</p>
         <p className="text-xs text-gray-500 mb-3">Select all data types in scope — this directly shapes the threat analysis</p>
         <div className="flex flex-wrap gap-2">
-          {[
-            'PII / Personal Data', 'PHI / Medical Records', 'Financial Data', 'Payment Card Data (PCI)',
-            'Authentication Credentials', 'API Keys / Secrets', 'Intellectual Property',
-            'Industrial Control Data', 'Critical Infrastructure Data', 'Government / Classified',
-            'Supply Chain Data', 'Audit Logs',
-          ].map(item => {
+          {SENSITIVE_DATA_TYPES.map(item => {
             const selected = (form.sensitiveData || []).includes(item);
             return (
               <button key={item} type="button"
@@ -1092,6 +1171,10 @@ function Stage4({ project, form, diagramData, onSave }) {
           cicdSecurity:       form?.cicdSecurity,
           technologyStack:    form?.technologyStack,
           dataResidency:      form?.dataResidency,
+          // Design document (if uploaded)
+          documentBase64:     form?.documentBase64,
+          documentMimeType:   form?.documentMimeType,
+          documentName:       form?.documentName,
         },
         diagramData?.elements || [],
         p => setProgress(p),
@@ -2016,6 +2099,11 @@ export default function NewProject() {
     sensitiveData:        [],
     complianceFrameworks: [],
     threatModel:          'stride',
+    // Design document
+    documentBase64:       '',
+    documentMimeType:     '',
+    documentName:         '',
+    documentSize:         0,
   });
 
   const canNext = () => {

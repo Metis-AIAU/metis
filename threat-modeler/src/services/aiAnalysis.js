@@ -701,11 +701,19 @@ function riskLevelFromScore(score) {
 export async function analyzeWithContext(project, formData = {}, canvasElements = [], onProgress) {
   // ── Try real Claude API via backend proxy first ──────────────────────────
   onProgress?.({ step: 1, total: 4, message: 'Sending system context to Claude AI...' });
+  const { documentBase64, documentMimeType, documentName, ...formDataWithoutDoc } = formData;
+  const body = {
+    project,
+    formData: formDataWithoutDoc,
+    canvasElements,
+    ...(documentBase64 ? { documentBase64, documentMimeType, documentName } : {}),
+  };
+
   try {
     const response = await fetchWithAuth('/api/analyze', {
       method: 'POST',
-      body: JSON.stringify({ project, formData, canvasElements }),
-      signal: AbortSignal.timeout(120_000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
     });
 
     if (response.ok) {

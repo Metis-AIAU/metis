@@ -1,6 +1,7 @@
-const express = require('express');
-const router  = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
+const mammoth  = require('mammoth');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' });
 
@@ -24,12 +25,12 @@ router.post('/', async (req, res) => {
     return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured on server' });
   }
 
-  const { project, formData = {}, canvasElements = [] } = req.body;
+  const { project, formData = {}, canvasElements = [], documentBase64, documentMimeType, documentName } = req.body;
   if (!project?.id) return res.status(400).json({ success: false, error: 'project.id required' });
 
   const projectId = project.id;
 
-  console.log('[analyze] Project:', project.name, '| Type:', formData.projectType || 'General', '| Industry:', formData.industry || 'n/a', '| Canvas nodes:', canvasElements.length);
+  console.log('[analyze] Project:', project.name, '| Type:', formData.projectType || 'General', '| Industry:', formData.industry || 'n/a', '| Canvas nodes:', canvasElements.length, '| Document:', documentName || 'none');
 
   // Build a rich prompt from all available context
   const componentNames = canvasElements
@@ -95,10 +96,47 @@ Return ONLY a JSON array, no markdown:
 strideCategory: S|T|R|I|D|E. likelihood/impact: 1-5. residualRiskScore < likelihood×impact. residualRiskLevel: CRITICAL≥20,HIGH≥15,MEDIUM≥10,LOW≥5,MINIMAL<5`;
 
   try {
+    // Build message content — prepend design document if provided
+    let messageContent;
+    if (documentBase64) {
+      const isPdf  = documentMimeType === 'application/pdf';
+      const isDocx = documentMimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                  || documentMimeType === 'application/msword';
+
+      if (isPdf) {
+        messageContent = [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: documentBase64 },
+            title: documentName || 'Design Document',
+            context: 'System design document provided by the user. Extract architecture, components, data flows, trust boundaries, and any security-relevant details to incorporate into the threat analysis.',
+          },
+          { type: 'text', text: prompt },
+        ];
+      } else if (isDocx) {
+        let docText = '';
+        try {
+          const buf    = Buffer.from(documentBase64, 'base64');
+          const result = await mammoth.extractRawText({ buffer: buf });
+          docText      = result.value?.slice(0, 12000) || '';
+        } catch (e) {
+          console.warn('[analyze] mammoth extraction failed:', e.message);
+        }
+        const docSection = docText
+          ? `\nDESIGN DOCUMENT CONTENT (${documentName || 'uploaded document'}):\n${docText}\n`
+          : '';
+        messageContent = prompt + docSection;
+      } else {
+        messageContent = prompt;
+      }
+    } else {
+      messageContent = prompt;
+    }
+
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 3500,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: 'user', content: messageContent }],
     });
 
     const rawText = message.content[0]?.text || '[]';

@@ -20,7 +20,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id'],
 }));
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '12mb' }));
 
 // ── Health check (public — used by Cloud Run) ────────────────────────────
 app.get('/api/health', (_req, res) => {

@@ -28,6 +28,13 @@ import ASDFortifyPage from './pages/compliance/ASDFortifyPage';
 import EssentialEightPage from './pages/compliance/EssentialEightPage';
 import GapAnalysis from './pages/compliance/GapAnalysis';
 import ComplianceReport from './pages/compliance/ComplianceReport';
+import InsuranceOverview from './pages/insurance/InsuranceOverview';
+import PolicyInterpreter from './pages/insurance/PolicyInterpreter';
+import SecurityTools from './pages/insurance/SecurityTools';
+import Integrations from './pages/insurance/Integrations';
+import ManualAssessment from './pages/insurance/ManualAssessment';
+import ExecutiveDashboard from './pages/insurance/ExecutiveDashboard';
+import { InsuranceProvider } from './context/InsuranceContext';
 import './index.css';
 
 /** Shows email verification screen if the user hasn't verified their email yet. */
@@ -113,6 +120,13 @@ function AppRoutes() {
                   <Route path="/compliance/essential-eight" element={<EssentialEightPage />} />
                   <Route path="/compliance/gap-analysis" element={<GapAnalysis />} />
                   <Route path="/compliance/report" element={<ComplianceReport />} />
+                  {/* Cyber Insurance & Accountability */}
+                  <Route path="/insurance" element={<InsuranceOverview />} />
+                  <Route path="/insurance/policy" element={<PolicyInterpreter />} />
+                  <Route path="/insurance/tools" element={<SecurityTools />} />
+                  <Route path="/insurance/integrations" element={<Integrations />} />
+                  <Route path="/insurance/assessment" element={<ManualAssessment />} />
+                  <Route path="/insurance/executive" element={<ExecutiveDashboard />} />
                 </Routes>
               </Layout>
             </OrgGate>
@@ -130,10 +144,12 @@ function App() {
       <OrgProvider>
           <ThreatProvider>
             <ComplianceProvider>
-              <BrowserRouter>
-                <AppRoutes />
-                <InteractivityMonitor />
-              </BrowserRouter>
+              <InsuranceProvider>
+                <BrowserRouter>
+                  <AppRoutes />
+                  <InteractivityMonitor />
+                </BrowserRouter>
+              </InsuranceProvider>
             </ComplianceProvider>
           </ThreatProvider>
       </OrgProvider>

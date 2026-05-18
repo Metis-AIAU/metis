@@ -45,11 +45,13 @@ if (fs.existsSync(distPath)) {
   const confluenceRoutes = require('./routes/confluence');
   const advancedRoutes   = require('./routes/advanced');
   const complianceRoutes = require('./routes/compliance');
+  const insuranceRoutes  = require('./routes/insurance');
 
   app.use('/api/analyze',    verifyFirebaseToken, requireOrgMember, analyzeRoutes);
   app.use('/api/confluence', verifyFirebaseToken, requireOrgMember, confluenceRoutes);
   app.use('/api/advanced',   verifyFirebaseToken, requireOrgMember, advancedRoutes);
   app.use('/api/compliance', verifyFirebaseToken, requireOrgMember, complianceRoutes);
+  app.use('/api/insurance',  verifyFirebaseToken, requireOrgMember, insuranceRoutes);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 

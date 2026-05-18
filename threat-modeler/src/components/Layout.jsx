@@ -27,6 +27,11 @@ import {
   Sparkles,
   Users,
   Eye,
+  Landmark,
+  Wrench,
+  Plug,
+  ClipboardList,
+  BarChart2,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
@@ -54,6 +59,15 @@ const complianceNavigation = [
   { name: 'Essential Eight', href: '/compliance/essential-eight',     icon: LayoutGrid },
   { name: 'Gap Analysis',    href: '/compliance/gap-analysis',        icon: AlertCircle },
   { name: 'Report',          href: '/compliance/report',             icon: PrinterCheck },
+];
+
+const insuranceNavigation = [
+  { name: 'Overview',           href: '/insurance',            icon: Landmark },
+  { name: 'Policy Interpreter', href: '/insurance/policy',    icon: FileText },
+  { name: 'Security Tools',     href: '/insurance/tools',     icon: Wrench },
+  { name: 'Integrations',       href: '/insurance/integrations', icon: Plug },
+  { name: 'Manual Assessment',  href: '/insurance/assessment', icon: ClipboardList },
+  { name: 'Executive Dashboard',href: '/insurance/executive',  icon: BarChart2 },
 ];
 
 // Hex grid SVG pattern for sidebar background depth
@@ -90,10 +104,10 @@ export default function Layout({ children }) {
     return location.pathname.startsWith(href);
   };
 
-  const NavItem = ({ item, isCompliance = false }) => {
+  const NavItem = ({ item, isCompliance = false, isInsurance = false }) => {
     const active = isActive(item.href);
-    const accentColor = isCompliance ? '#34d399' : '#22d3ee';
-    const activeBg = isCompliance ? 'rgba(52,211,153,0.08)' : 'rgba(34,211,238,0.08)';
+    const accentColor = isInsurance ? '#f59e0b' : isCompliance ? '#34d399' : '#22d3ee';
+    const activeBg = isInsurance ? 'rgba(245,158,11,0.08)' : isCompliance ? 'rgba(52,211,153,0.08)' : 'rgba(34,211,238,0.08)';
 
     return (
       <Link
@@ -202,6 +216,25 @@ export default function Layout({ children }) {
 
           {complianceNavigation.map(item => (
             <NavItem key={item.name} item={item} isCompliance />
+          ))}
+
+          {/* Insurance divider */}
+          <div className="py-3 px-2">
+            {sidebarOpen ? (
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-[11px] font-bold tracking-[0.15em] uppercase"
+                  style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>
+                  Insurance
+                </span>
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
+              </div>
+            ) : (
+              <div className="h-px mx-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            )}
+          </div>
+
+          {insuranceNavigation.map(item => (
+            <NavItem key={item.name} item={item} isInsurance />
           ))}
         </nav>
 

@@ -32,6 +32,7 @@ import {
   Plug,
   ClipboardList,
   BarChart2,
+  Layers,
 } from 'lucide-react';
 import { useThreatContext } from '../context/ThreatContext';
 import { useAuth } from '../context/AuthContext';
@@ -66,8 +67,9 @@ const insuranceNavigation = [
   { name: 'Policy Interpreter', href: '/insurance/policy',    icon: FileText },
   { name: 'Security Tools',     href: '/insurance/tools',     icon: Wrench },
   { name: 'Integrations',       href: '/insurance/integrations', icon: Plug },
-  { name: 'Manual Assessment',  href: '/insurance/assessment', icon: ClipboardList },
-  { name: 'Executive Dashboard',href: '/insurance/executive',  icon: BarChart2 },
+  { name: 'Manual Assessment',  href: '/insurance/assessment',    icon: ClipboardList },
+  { name: 'Executive Dashboard',href: '/insurance/executive',     icon: BarChart2 },
+  { name: 'Architecture',       href: '/insurance/architecture',  icon: Layers },
 ];
 
 // Hex grid SVG pattern for sidebar background depth

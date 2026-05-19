@@ -34,6 +34,7 @@ import SecurityTools from './pages/insurance/SecurityTools';
 import Integrations from './pages/insurance/Integrations';
 import ManualAssessment from './pages/insurance/ManualAssessment';
 import ExecutiveDashboard from './pages/insurance/ExecutiveDashboard';
+import InsuranceArchitecture from './pages/insurance/Architecture';
 import { InsuranceProvider } from './context/InsuranceContext';
 import './index.css';
 
@@ -127,6 +128,7 @@ function AppRoutes() {
                   <Route path="/insurance/integrations" element={<Integrations />} />
                   <Route path="/insurance/assessment" element={<ManualAssessment />} />
                   <Route path="/insurance/executive" element={<ExecutiveDashboard />} />
+                  <Route path="/insurance/architecture" element={<InsuranceArchitecture />} />
                 </Routes>
               </Layout>
             </OrgGate>
